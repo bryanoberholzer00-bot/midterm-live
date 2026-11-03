@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Midterm USA 2026 — risultati in diretta</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26a14 14 0 0 1 28 0z' fill='%233b7dd8'/%3E%3Cpath d='M16 12a14 14 0 0 1 14 14H16z' fill='%23d64545'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Midterm USA 2026</h1>
+    <p class="sub">Risultati in diretta · Senato, Camera, Governatori</p>
+  </div>
+  <div class="status" id="status">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">Caricamento…</span>
+    <span class="muted" id="nextText"></span>
+  </div>
+  <div class="controls">
+    <input type="search" id="search" placeholder="Cerca stato o candidato" aria-label="Cerca stato o candidato">
+    <label>Ogni
+      <select id="interval">
+        <option value="15">15 s</option>
+        <option value="30" selected>30 s</option>
+        <option value="60">60 s</option>
+        <option value="120">2 min</option>
+      </select>
+    </label>
+    <button id="pauseBtn" type="button">Pausa</button>
+    <button id="notifBtn" type="button">Notifiche</button>
+    <button id="soundBtn" type="button">Suono</button>
+    <button id="themeBtn" type="button" title="Tema">Tema: auto</button>
+  </div>
+</header>
+
+<section class="balance" id="balance">
+  <div class="bop" id="bop-S"></div>
+  <div class="bop" id="bop-H"></div>
+  <div class="bop" id="bop-G"></div>
+</section>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-office="S" type="button">Senato <span class="count" id="cnt-S"></span></button>
+  <button class="tab" data-office="H" type="button">Camera <span class="count" id="cnt-H"></span></button>
+  <button class="tab" data-office="G" type="button">Governatori <span class="count" id="cnt-G"></span></button>
+  <span class="spacer"></span>
+  <div class="viewtoggle" role="group" aria-label="Tipo di mappa">
+    <button class="vbtn active" data-view="geo" type="button">Mappa</button>
+    <button class="vbtn" data-view="tile" type="button">Tessere</button>
+  </div>
+</nav>
+
+<main class="main">
+  <section class="mapwrap">
+    <div class="maphead">
+      <h2 id="mapTitle">Senato</h2>
+      <div class="legend">
+        <span><i class="sw dem"></i>Dem. eletto</span>
+        <span><i class="sw gop"></i>Rep. eletto</span>
+        <span><i class="sw oth"></i>Altro eletto</span>
+        <span><i class="sw dem lead"></i>Dem. in vantaggio</span>
+        <span><i class="sw gop lead"></i>Rep. in vantaggio</span>
+        <span><i class="sw none"></i>Nessun voto</span>
+        <span><i class="sw off"></i>Non al voto</span>
+      </div>
+    </div>
+    <div class="mapbox">
+      <svg id="map" viewBox="0 0 960 500" role="img" aria-label="Mappa degli stati"></svg>
+      <div class="zoomctl" id="zoomctl">
+        <button type="button" data-z="in" aria-label="Ingrandisci" title="Ingrandisci (+)">+</button>
+        <button type="button" data-z="out" aria-label="Riduci" title="Riduci (−)">−</button>
+        <button type="button" data-z="state" title="Zoom sullo stato selezionato (Z)">Stato</button>
+        <button type="button" data-z="reset" id="zoomReset" hidden title="Tutta la mappa (0)">Tutta</button>
+      </div>
+    </div>
+    <p class="muted small maphint">Ctrl + rotella, i pulsanti o il doppio clic su uno stato per ingrandire · trascina per spostarti</p>
+  </section>
+  <aside class="detail" id="detail">
+    <p class="muted">Clicca uno stato sulla mappa per vedere le gare e i candidati.</p>
+  </aside>
+</main>
+
+<section class="block" id="closeBlock">
+  <div class="blockhead">
+    <h2>In bilico</h2>
+    <span class="muted small">gare aperte con lo scarto più piccolo</span>
+  </div>
+  <ol class="closelist" id="closeRaces"></ol>
+</section>
+
+<section class="block" id="measBlock">
+  <div class="blockhead">
+    <h2>Referendum statali</h2>
+    <span class="muted small" id="measInfo">Circa 150 quesiti in 36 stati, dall'aborto al voto con documento.</span>
+  </div>
+  <div class="meastools" id="measTools">
+    <button type="button" id="measLoad">Carica i referendum di tutti gli stati</button>
+    <span class="muted small">Scarica i file degli stati con referendum (qualche MB) e li aggiorna ogni 2 minuti.</span>
+  </div>
+  <div class="mlist" id="measList"></div>
+</section>
+
+<section class="block" id="scenBlock">
+  <div class="blockhead">
+    <h2>Scenari per la maggioranza</h2>
+    <div class="viewtoggle" role="group" aria-label="Camera dello scenario">
+      <button class="vbtn sbtn active" data-sc="S" type="button">Senato</button>
+      <button class="vbtn sbtn" data-sc="H" type="button">Camera</button>
+    </div>
+  </div>
+  <p class="muted small">Decidi tu chi vince le gare ancora aperte e guarda chi arriva alla maggioranza. Si parte dalla proiezione semplice; le gare già assegnate da AP restano fisse. Le scelte restano salvate in questo browser.</p>
+  <div id="scen"></div>
+</section>
+
+<section class="block">
+  <div class="blockhead">
+    <h2 id="keyTitle">Gare chiave</h2>
+    <label class="muted"><input type="checkbox" id="allRaces"> mostra tutte le gare</label>
+  </div>
+  <div class="races" id="keyRaces"></div>
+</section>
+
+<section class="twocol">
+  <div class="block">
+    <h2>Ultime assegnazioni</h2>
+    <ol class="calls" id="calls"><li class="muted">Nessuna gara ancora assegnata.</li></ol>
+  </div>
+  <div class="block">
+    <h2>Chiusura dei seggi <span class="muted small">(ora locale)</span></h2>
+    <ul class="closings" id="closings"></ul>
+  </div>
+</section>
+
+<footer class="foot">
+  <p>Dati: Associated Press tramite i file pubblici del New York Times, aggiornati ogni pochi secondi. Feed non ufficiale: può cambiare senza preavviso. Rating pre-voto e confronto 2024 dal NYT. Le stime dei voti restanti e la proiezione semplice sono calcolate dalla pagina e vanno prese con cautela.</p>
+  <p class="keys">Scorciatoie: <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> schede · <kbd>M</kbd> tipo di mappa · <kbd>/</kbd> cerca · <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> <kbd>Z</kbd> zoom · <kbd>R</kbd> aggiorna ora · <kbd>P</kbd> pausa · <kbd>Esc</kbd> chiudi lo stato</p>
+</footer>
+
+<div class="toasts" id="toasts"></div>
+<div class="tip" id="tip" hidden></div>
+<div class="sr-only" id="live" aria-live="polite"></div>
+
+<script src="states.js"></script>
+<script src="districts.js" async onload="window.dispatchEvent(new Event('districts'))"></script>
+<script src="app.js"></script>
+</body>
+</html>
