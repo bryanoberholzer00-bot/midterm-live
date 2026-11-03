@@ -108,6 +108,21 @@ Scorciatoie da tastiera: `1` `2` `3` schede, `M` tipo di mappa, `+` `-` `0` zoom
 `Z` zoom sullo stato selezionato, `/` cerca, `R` aggiorna subito, `P` pausa, `Esc`
 chiude lo stato selezionato.
 
+## Collaudo con un'elezione vera: modalità archivio
+
+Con `?data=2024-11-05` la pagina carica le elezioni del 5 novembre 2024 dallo stesso
+archivio del NYT, con tutti i risultati definitivi: è il modo per vedere la pagina piena
+di dati reali e per controllare che legga bene i feed. Sul 2024 i numeri tornano con
+quelli ufficiali (Senato 53–47 con 4 seggi strappati dai Rep, Camera 220–215 con 4 e 5
+seggi cambiati di mano, Alaska decisa al secondo turno del voto a scelta multipla).
+In archivio la mappa della Camera usa le tessere, perché i confini 2026 non valgono per
+il 2024.
+
+Il collaudo ha corretto tre cose che con i dati di stanotte sarebbero uscite sbagliate:
+il campo "seggio strappato" nei feed è vero/falso e non il partito; la soglia di
+maggioranza va letta dal feed (51 per entrambi nel 2024, 50 per i Rep nel 2026);
+nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
+
 ## Modalità demo
 
 http://127.0.0.1:8787/?demo=1 inventa voti e assegnazioni a partire dalle gare vere,

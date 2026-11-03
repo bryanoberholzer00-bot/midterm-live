@@ -3,7 +3,12 @@
 (() => {
   'use strict';
 
-  const DATE = '2026-11-03';
+  // ?data=2024-11-05 carica un'elezione passata dello stesso archivio NYT (per collaudo o per rivederla)
+  const PARAMS = new URLSearchParams(location.search);
+  const LIVE_DATE = '2026-11-03';
+  const DATE = /^\d{4}-\d{2}-\d{2}$/.test(PARAMS.get('data') || '') ? PARAMS.get('data') : LIVE_DATE;
+  const ARCHIVE = DATE !== LIVE_DATE;
+  const SCEN_KEY = 'midterm2026-scen' + (ARCHIVE ? '-' + DATE : '');
   const BASE = `https://static01.nyt.com/elections-assets/pages/data/${DATE}/`;
   const FILES = { S: 'senate', H: 'house', G: 'governor' };
   const OFFICES = ['S', 'H', 'G'];
@@ -17,7 +22,7 @@
   const RATING_RANK = { 'tossup': 0, 'lean-dem': 1, 'lean-rep': 1, 'likely-dem': 2, 'likely-rep': 2, 'solid-dem': 3, 'solid-rep': 3 };
   const STATUS_IT = { too_early: 'Troppo presto', too_close_to_call: 'Troppo vicino', called: 'Assegnato', runoff: 'Ballottaggio', uncontested: 'Senza avversari' };
   const PARTY_IT = { DEM: 'Dem.', GOP: 'Rep.', IND: 'Ind.', LIB: 'Lib.', GRN: 'Verdi', OTH: 'Altro' };
-  const DEMO = new URLSearchParams(location.search).has('demo');
+  const DEMO = !ARCHIVE && PARAMS.has('demo');
 
   // Mappa a tessere: [colonna, riga]
   const TILES = {
@@ -34,7 +39,7 @@
   const GEO = window.US_STATES || {};
   const STATE_NAMES = Object.fromEntries(Object.entries(GEO).map(([k, v]) => [k, k === 'DC' ? 'Washington D.C.' : v.name]));
   // Confini 2026 dei distretti della Camera (districts.js, caricato in modo asincrono)
-  const DIST = () => window.US_DISTRICTS || null;
+  const DIST = () => (ARCHIVE ? null : window.US_DISTRICTS || null);   // i confini 2026 non valgono per le elezioni passate
   const VB0 = { x: 0, y: 0, w: 960, h: 500 };
   const isGeo = () => state.view === 'geo' || state.view === 'shift';
   const stateBBox = {};
@@ -51,6 +56,10 @@
   const fmtTime = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' });
   const fmtTimeS = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmtDay = new Intl.DateTimeFormat('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+  const fmtDayTime = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const isOld = (d) => Math.abs(Date.now() - d) > 18 * 3600e3;
+  const fmtWhen = (d) => (isOld(d) ? fmtDayTime.format(d) : fmtTime.format(d));
+  const atWhen = (d) => (isOld(d) ? `il ${fmtDayTime.format(d)}` : `alle ${fmtTime.format(d)}`);
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
@@ -72,7 +81,7 @@
     measStates: null, measAt: 0, measF: 'all', measQ: '', unseen: 0,
   };
   const BASE_TITLE = document.title;
-  function loadScen() { try { return JSON.parse(store.get('midterm2026-scen', '{}')) || {}; } catch (e) { return {}; } }
+  function loadScen() { try { return JSON.parse(store.get(SCEN_KEY, '{}')) || {}; } catch (e) { return {}; } }
 
   /* ---------- rete ---------- */
   // Per ogni file ricordiamo l'ultimo Last-Modified: se non cambia, non rileggiamo né analizziamo il JSON.
@@ -127,7 +136,7 @@
       if (changed) { detectNewCalls(); recordTrend(); renderAll(); showToasts(); }
       state.loadedOnce = true;
       const upd = Math.max(0, ...Object.values(state.meta).map((d) => +d || 0));
-      setStatus('ok', `Dati delle ${fmtTimeS.format(new Date(upd || Date.now()))}${changed ? '' : ' · nessuna novità'}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}`);
+      setStatus('ok', `Dati ${upd && isOld(new Date(upd)) ? 'del ' + fmtDayTime.format(new Date(upd)) : 'delle ' + fmtTimeS.format(new Date(upd || Date.now()))}${changed ? '' : ' · nessuna novità'}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}${ARCHIVE ? ' · ARCHIVIO' : ''}`);
       refreshCountyPanels(true);
       refreshStatePanel(true);
       if (state.measAt && Date.now() - state.measAt > 110000) loadAllMeasures();
@@ -199,7 +208,8 @@
       eevp: tru.eevp || 0, total, expected: tru.total_expected_vote || 0,
       precReporting: tru.precincts_reporting || 0, precTotal: tru.precincts_total || 0,
       cands, winner, leader, runoff: runoff.length > 0,
-      gained: (r.outcome && r.outcome.gained) || null,
+      gained: flipParty(r.outcome && r.outcome.gained, winner),
+      rcv: rcvRounds(r, tru, cands),
       calledAt: acceptedAt ? new Date(acceptedAt) : null,
       updatedAt: tru.provider_updated_at ? new Date(tru.provider_updated_at) : null,
       margin: dem && gop && total ? dem.pct - gop.pct : null, hist: histOf(tru),
@@ -207,6 +217,36 @@
     };
   }
   const majorFirst = (c) => (c.party === 'DEM' || c.party === 'GOP' ? 0 : 1);
+
+  // "Seggio strappato": nei feed reali è true/false (vedi 2024); accettiamo anche il codice del partito
+  function flipParty(g, winner) {
+    if (!winner || !g) return null;
+    if (g === true) return winner.party;
+    if (typeof g === 'string') return g;
+    if (typeof g === 'object' && g.nyt_id) return g.nyt_id;
+    return null;
+  }
+
+  // Voto a scelta multipla (Maine, Alaska): risultato dell'ultimo turno di conteggio
+  function rcvRounds(r, tru, cands) {
+    const rounds = Array.isArray(r.rounds) ? r.rounds : null;
+    if (!rounds || rounds.length < 2) return null;
+    const byRid = new Map((tru.candidates || []).map((c) => [c.nyt_candidate_race_id, c.nyt_id]));
+    const last = [...rounds].sort((a, b) => (a.order || 0) - (b.order || 0)).pop();
+    const tot = last.total_votes || (last.candidates || []).reduce((t, c) => t + (c.total || 0), 0);
+    const fin = (last.candidates || []).filter((c) => !c.previously_eliminated && (c.total || 0) > 0).map((c) => {
+      const cand = cands.find((x) => x.id === byRid.get(c.nyt_candidate_race_id));
+      return { name: cand ? cand.name : '?', party: cand ? cand.party : 'OTH', partyLabel: cand ? cand.partyLabel : '', votes: c.total || 0, pct: tot ? (c.total || 0) / tot * 100 : 0 };
+    }).sort((a, b) => b.votes - a.votes);
+    return fin.length ? { n: rounds.length, fin } : null;
+  }
+
+  // Soglia di maggioranza: dal feed (nel 2024 al Senato era 51 per entrambi, nel 2026 ai Rep bastano 50)
+  function chamberToWin(o) {
+    const pc = state.control[o];
+    if (pc && pc.to_win && pc.to_win.DEM && pc.to_win.GOP) return { DEM: pc.to_win.DEM, GOP: pc.to_win.GOP };
+    return o === 'S' ? { DEM: 51, GOP: 50 } : { DEM: 218, GOP: 218 };
+  }
 
   // Quanti voti mancano e quale quota servirebbe a chi insegue (stima, solo i primi due)
   function catchUp(r) {
@@ -230,18 +270,19 @@
     let demShare = lean.endsWith('dem') ? 0.56 : lean.endsWith('rep') ? 0.44 : 0.5;
     demShare += (rnd() - 0.5) * 0.08;
     const meta = r.candidate_metadata || {};
-    const yesNo = tru.candidates.some((c) => c.nyt_id === 'yes');
+    const isYes = (id) => !!(meta[id] && meta[id].party && meta[id].party.nyt_id === 'YES');
+    const yesNo = tru.candidates.some((c) => isYes(c.nyt_id));
     const yesShare = 0.5 + (rnd() - 0.5) * 0.36;
     const cands = tru.candidates.map((c) => {
       const p = (meta[c.nyt_id] && meta[c.nyt_id].party && meta[c.nyt_id].party.nyt_id) || 'OTH';
-      const share = yesNo ? (c.nyt_id === 'yes' ? yesShare : 1 - yesShare)
+      const share = yesNo ? (isYes(c.nyt_id) ? yesShare : 1 - yesShare)
         : p === 'DEM' ? demShare : p === 'GOP' ? 1 - demShare - 0.02 : 0.02 / Math.max(1, tru.candidates.length - 2);
       return { ...c, votes: { total: Math.round(total * share) } };
     });
     const sorted = [...cands].sort((a, b) => b.votes.total - a.votes.total);
     if (yesNo) {   // nei referendum vince il Sì solo se supera la soglia (per esempio 55% in Colorado)
       const yesWins = yesShare * 100 >= (r.win_threshold || 50);
-      sorted.sort((a, b) => ((b.nyt_id === 'yes') === yesWins) - ((a.nyt_id === 'yes') === yesWins));
+      sorted.sort((a, b) => (isYes(b.nyt_id) === yesWins) - (isYes(a.nyt_id) === yesWins));
     }
     const called = eevp >= 80 && (yesNo ? Math.abs(yesShare * 100 - (r.win_threshold || 50)) > 3 : Math.abs(demShare - 0.5) > 0.03);
     const winParty = meta[sorted[0].nyt_id] && meta[sorted[0].nyt_id].party && meta[sorted[0].nyt_id].party.nyt_id;
@@ -307,7 +348,7 @@
   }
 
   /* ---------- andamento dei seggi nella serata ---------- */
-  const TREND_KEY = 'midterm2026-trend' + (DEMO ? '-demo' : '');
+  const TREND_KEY = 'midterm2026-trend' + (DEMO ? '-demo' : '') + (ARCHIVE ? '-' + DATE : '');
   function seatsFn(office) {
     const pc = state.control[office], races = state.data[office] || [];
     const bal = pc && pc.party_balance;
@@ -382,8 +423,8 @@
 
   /* --- bilancio delle camere --- */
   function renderBalance() {
-    $('bop-S').innerHTML = chamberHTML('Senato', 'S', 100, { DEM: 51, GOP: 50 }, 4, 's');
-    $('bop-H').innerHTML = chamberHTML('Camera', 'H', 435, { DEM: 218, GOP: 218 }, 9, 'h');
+    $('bop-S').innerHTML = chamberHTML('Senato', 'S', 100, chamberToWin('S'), 4, 's');
+    $('bop-H').innerHTML = chamberHTML('Camera', 'H', 435, chamberToWin('H'), 9, 'h');
     $('bop-G').innerHTML = govHTML(state.data.G || []);
   }
 
@@ -477,7 +518,7 @@
         <span>${lead('GOP') ? `<span class="lead">+${lead('GOP')} in vantaggio</span> ` : ''}Rep. <span class="gop">${gop}</span></span></div>
       ${projHTML(projection('G', calledN))}
       <div class="foot"><span>Governatori strappati: Dem. ${flipsD} · Rep. ${flipsR}</span><span>Gare incerte aperte: ${open}</span></div>
-      <div class="foot"><span>Le altre 14 poltrone non sono al voto nel 2026.</span></div>`;
+      ${50 - total > 0 ? `<div class="foot"><span>Le altre ${50 - total} poltrone non sono al voto nel ${DATE.slice(0, 4)}.</span></div>` : ''}`;
   }
 
   /* --- mappa nazionale --- */
@@ -543,9 +584,12 @@
     }
     const g = svg.querySelector('.arrows'); if (g) g.innerHTML = out.join('');
     const avg = wSum ? sSum / wSum : null;
+    const ref = races.find((r) => r.hist);
+    const refTxt = ref ? `rispetto a: ${histLabel(ref.hist)}` : 'rispetto al voto di riferimento';
+    $('shiftRef').textContent = `lunghezza = punti di margine ${refTxt}`;
     $('shiftSum').innerHTML = n
-      ? `Spostamento medio, pesato per i voti: <b class="${avg >= 0 ? 'p dem' : 'p gop'}">${Math.abs(avg).toFixed(1)} punti verso ${avg >= 0 ? 'i Dem' : 'i Rep'}</b> rispetto alle presidenziali 2024, in ${n} gare su ${races.length} con almeno il 10% scrutinato.`
-      : 'Le frecce compaiono quando una gara ha almeno il 10% dei voti scrutinati: mostrano di quanti punti il margine si è spostato rispetto alle presidenziali 2024.';
+      ? `Spostamento medio, pesato per i voti: <b class="${avg >= 0 ? 'p dem' : 'p gop'}">${Math.abs(avg).toFixed(1)} punti verso ${avg >= 0 ? 'i Dem' : 'i Rep'}</b> ${refTxt}, in ${n} gare su ${races.length} con almeno il 10% scrutinato.`
+      : ref ? `Le frecce compaiono quando una gara ha almeno il 10% dei voti scrutinati: mostrano di quanti punti il margine si è spostato ${refTxt}.` : 'Per queste gare il feed non contiene un voto di riferimento con cui confrontare il margine.';
   }
 
   function updateGeoMap(byState) {
@@ -799,7 +843,7 @@
   const MEASURE_IT = { Proposition: 'Proposta', Amendment: 'Emendamento', 'Constitutional Amendment': 'Emendamento costituzionale', Question: 'Quesito',
     Issue: 'Quesito', Measure: 'Misura', Initiative: 'Iniziativa', Proposal: 'Proposta', Referendum: 'Referendum', 'Advisory Question': 'Quesito consultivo',
     'Public Question': 'Quesito', 'Bond Measure': 'Prestito obbligazionario' };
-  const OFFICE_IT = { 'Attorney General': 'Procuratore generale', 'Lieutenant Governor': 'Vicegovernatore', 'Secretary of State': 'Segretario di Stato',
+  const OFFICE_IT = { President: 'Presidente', 'Attorney General': 'Procuratore generale', 'Lieutenant Governor': 'Vicegovernatore', 'Secretary of State': 'Segretario di Stato',
     Treasurer: 'Tesoriere', Comptroller: 'Revisore dei conti', Controller: 'Revisore dei conti', 'Comptroller General': 'Revisore generale', Auditor: 'Revisore',
     'Supreme Court': 'Corte suprema', 'Appeals Court': "Corte d'appello", 'Criminal Appeals Court': "Corte d'appello penale",
     'Insurance Commissioner': 'Commissario alle assicurazioni', 'Superintendent of Public Instruction': "Sovrintendente all'istruzione",
@@ -831,7 +875,7 @@
     for (const raw of j.races || []) {
       if (raw.coverage !== 'state' || raw.office_id === 'S' || raw.office_id === 'G' || raw.office_id === 'H') continue;
       const n = normalize(DEMO ? demoize(raw) : raw, 'X');
-      const yes = n.cands.find((c) => c.id === 'yes'), no = n.cands.find((c) => c.id === 'no');
+      const yes = n.cands.find((c) => c.party === 'YES'), no = n.cands.find((c) => c.party === 'NO');
       if (yes || raw.ballot_measure_text) {
         measures.push({ ...n, yes, no, officeName: raw.office, title: (raw.title && raw.title.default) || `${raw.office} ${raw.seat_number || ''}`.trim(),
           desc: (raw.seat || '').replace(/^[^-]*-\s*/, ''), threshold: raw.win_threshold || 50 });
@@ -841,17 +885,21 @@
     return { measures, offices };
   }
 
+  const OPT_IT = { yes: 'Sì', no: 'No', for: 'Favorevoli', against: 'Contrari', repeal: 'Abrogare', retain: 'Mantenere', approve: 'Approvare', reject: 'Respingere' };
+  function optLabel(c, fallback) { return c ? OPT_IT[String(c.name).toLowerCase()] || c.name : fallback; }
+
   function measureHTML(m, withState) {
     const y = m.yes ? m.yes.pct : 0, n = m.no ? m.no.pct : 0, thr = m.threshold || 50;
-    const passed = m.winner ? m.winner.id === 'yes' : null;
+    const passed = m.winner ? m.winner.party === 'YES' : null;
+    const yl = optLabel(m.yes, 'Sì'), nl = optLabel(m.no, 'No');
     const badge = m.winner ? `<span class="badge ${passed ? 'yes' : 'no'}">${passed ? 'Approvato' : 'Respinto'}</span>`
-      : m.total ? `<span class="badge">Avanti il ${y >= thr ? 'Sì' : 'No'}</span>` : '';
+      : m.total ? `<span class="badge">Avanti: ${y >= thr ? yl : nl}</span>` : '';
     return `<div class="measure"${withState ? ` data-mst="${m.state}"` : ''}>
       <div class="rh"><b>${withState ? esc(m.stateName) + ' · ' : ''}${esc(m.title)}</b>${badge}</div>
       <div class="mdesc"><span class="mtype">${esc(MEASURE_IT[m.officeName] || (OFFICE_IT[m.officeName] ? OFFICE_IT[m.officeName] + ' · conferma' : m.officeName))}</span> ${esc(m.desc)}</div>
       <div class="ynbar"><div class="y" style="width:${y.toFixed(1)}%"></div><div class="n" style="width:${n.toFixed(1)}%"></div><i class="thr" style="left:${thr}%"></i></div>
-      <div class="rep"><span><b class="yes">Sì ${m.total ? y.toFixed(1) + '%' : '—'}</b> · <b class="no">No ${m.total ? n.toFixed(1) + '%' : '—'}</b></span>
-        <span>${m.total ? m.eevp + '% scrutinato' : 'Nessun voto'}${thr !== 50 ? ` · serve il ${thr}% di Sì` : ''}</span></div>
+      <div class="rep"><span><b class="yes">${yl} ${m.total ? y.toFixed(1) + '%' : '—'}</b> · <b class="no">${nl} ${m.total ? n.toFixed(1) + '%' : '—'}</b></span>
+        <span>${m.total ? m.eevp + '% scrutinato' : 'Nessun voto'}${thr !== 50 ? ` · serve il ${thr}% di ${yl}` : ''}</span></div>
     </div>`;
   }
 
@@ -884,6 +932,7 @@
   // Referendum di tutto il paese: si caricano solo i file degli stati che ne hanno, su richiesta
   async function pool(items, n, fn) { const q = [...items]; await Promise.all(Array.from({ length: n }, async () => { while (q.length) await fn(q.shift()); })); }
   async function loadAllMeasures() {
+    if (!state.measStates && ARCHIVE) state.measStates = Object.keys(GEO);
     if (!state.measStates) {
       $('measInfo').textContent = 'Cerco gli stati con referendum…';
       try {
@@ -917,8 +966,8 @@
     const all = state.measStates.flatMap((st) => (stateFeeds.get(st) || {}).measures || []);
     const q = state.measQ.trim().toLowerCase(), f = state.measF;
     const list = all.filter((m) => (!q || `${m.stateName} ${m.title} ${m.desc}`.toLowerCase().includes(q))
-      && (f === 'all' || (f === 'open' && !m.winner) || (m.winner && m.winner.id === f)));
-    const nY = all.filter((m) => m.winner && m.winner.id === 'yes').length, nN = all.filter((m) => m.winner && m.winner.id === 'no').length;
+      && (f === 'all' || (f === 'open' && !m.winner) || (m.winner && m.winner.party === f.toUpperCase())));
+    const nY = all.filter((m) => m.winner && m.winner.party === 'YES').length, nN = all.filter((m) => m.winner && m.winner.party === 'NO').length;
     $('measInfo').textContent = `${all.length} referendum in ${state.measStates.length} stati · ${nY} approvati · ${nN} respinti`;
     $('measList').innerHTML = list.length ? list.map((m) => measureHTML(m, true)).join('') : '<p class="muted">Nessun referendum corrisponde al filtro.</p>';
   }
@@ -963,7 +1012,7 @@
     const rep = r.total
       ? `<span>Scrutinato: <b>${r.eevp}%</b> del voto atteso</span><span>${fmtInt.format(r.total)} voti · ${r.precReporting}/${r.precTotal} sezioni</span>`
       : '<span>Nessun voto scrutinato</span>';
-    const when = r.calledAt ? `<span>Assegnata alle ${fmtTime.format(r.calledAt)}</span>` : (full && r.updatedAt && r.total ? `<span>Aggiornata alle ${fmtTime.format(r.updatedAt)}</span>` : '');
+    const when = r.calledAt ? `<span>Assegnata ${atWhen(r.calledAt)}</span>` : (full && r.updatedAt && r.total ? `<span>Aggiornata ${atWhen(r.updatedAt)}</span>` : '');
     const title = full ? (r.office === 'H' ? `Distretto ${r.seatNum}` : OFFICE_ONE[r.office] + (r.special ? ' (speciale)' : '')) : raceLabel(r);
     let analysis = '', panel = '', toggle = '';
     if (full) {
@@ -985,6 +1034,7 @@
         }
         bits.push(s);
       }
+      if (r.rcv) bits.unshift(`<b>Voto a scelta multipla</b>, dopo ${r.rcv.n} turni di conteggio: ${r.rcv.fin.map((c) => `<span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)} <b>${c.pct.toFixed(1)}%</b>`).join(' · ')}.`);
       if (bits.length) analysis = `<div class="analysis">${bits.join('<br>')}</div>`;
       if (r.url) analysis += `<div class="rep"><a href="${esc(r.url)}" target="_blank" rel="noopener">Pagina NYT della gara ↗</a></div>`;
       if (r.office === 'H' && (state.data.H || []).filter((x) => x.state === r.state).length > 1) {
@@ -1100,7 +1150,7 @@
     let use = [...keys].filter((k) => !declared || declared[k] === 'Y');
     if (!declared && use.includes('advance')) use = use.filter((k) => k !== 'absentee_mail' && k !== 'advance_in_person');
     const expected = stU.expected_vote_by_vote_type || {};
-    return use.map((k) => {
+    const types = use.map((k) => {
       let d = 0, g = 0, tot = 0;
       for (const c of stU.candidates) {
         const v = (c.votes && c.votes[k]) || 0; tot += v;
@@ -1109,9 +1159,18 @@
       const ev = stU.eevp_by_vote_type && typeof stU.eevp_by_vote_type[k] === 'number' && expected[k] > 0 ? stU.eevp_by_vote_type[k] : null;
       return { key: k, total: tot, margin: tot && (d || g) ? (d - g) / tot * 100 : null, eevp: ev };
     }).filter((t) => t.total > 0);
+    if (types.length === 1 && types[0].key === 'advance') {
+      let d = 0, g = 0, tot = 0;
+      for (const c of stU.candidates) {
+        const v = Math.max(0, ((c.votes && c.votes.total) || 0) - ((c.votes && c.votes.advance) || 0)); tot += v;
+        const p = partyOf(c.nyt_id); if (p === 'DEM') d += v; else if (p === 'GOP') g += v;
+      }
+      if (tot > 0) types.push({ key: 'rest', total: tot, margin: d || g ? (d - g) / tot * 100 : null, eevp: null });
+    }
+    return types;
   }
 
-  const VT_IT = { advance: 'Voto anticipato', absentee_mail: 'Per posta', advance_in_person: 'Anticipato di persona', election_day_in_person: 'Giorno del voto', provisional: 'Provvisori' };
+  const VT_IT = { advance: 'Voto anticipato', absentee_mail: 'Per posta', advance_in_person: 'Anticipato di persona', election_day_in_person: 'Giorno del voto', provisional: 'Provvisori', rest: 'Giorno del voto e altri' };
   function typesHTML(feed, r) {
     const ts = (feed.types || []).filter((t) => t.margin !== null);
     if (ts.length < 2) return '';
@@ -1266,12 +1325,12 @@
     if (r.rating && r.rating !== 'tossup') return r.rating.endsWith('dem') ? 'DEM' : 'GOP';
     return 'NONE';
   }
-  function saveScen() { store.set('midterm2026-scen', JSON.stringify(state.scen)); }
+  function saveScen() { store.set(SCEN_KEY, JSON.stringify(state.scen)); }
   function renderScen() {
     const o = state.scOffice, races = state.data[o] || [];
     if (!races.length) return;
     for (const id of Object.keys(state.scen)) { const r = state.byId.get(id); if (r && r.winner) delete state.scen[id]; }
-    const seats = seatsFn(o), toWin = o === 'S' ? { DEM: 51, GOP: 50 } : { DEM: 218, GOP: 218 }, total = o === 'S' ? 100 : 435;
+    const seats = seatsFn(o), toWin = chamberToWin(o), total = o === 'S' ? 100 : 435;
     const open = races.filter((r) => !r.winner);
     const pick = (r) => state.scen[r.id] || scenDefault(r);
     const base = { DEM: seats('DEM'), GOP: seats('GOP'), OTH: seats('OTH') };
@@ -1294,7 +1353,7 @@
       <div class="scsum">
         <div class="bar"><div class="seg dem" style="width:${w(t.DEM)}"></div><div class="seg oth" style="width:${w(t.OTH)}"></div><div class="spacer"></div><div class="seg gop" style="width:${w(t.GOP)}"></div><div class="marker" style="left:${w(toWin.DEM)}"></div></div>
         <div class="nums"><span><span class="dem">${t.DEM}</span> Dem.</span><span class="small">${verdict}</span><span>Rep. <span class="gop">${t.GOP}</span></span></div>
-        <p class="muted small">Seggi già decisi o non al voto: Dem. ${base.DEM}, Rep. ${base.GOP}${base.OTH ? `, altri ${base.OTH}` : ''}. Restano aperte ${open.length} gare: per la maggioranza ai Dem ne servono ${needD}, ai Rep ${needR}.${o === 'S' ? ' Con 50 a 50 decide il vicepresidente, che è repubblicano.' : ''}</p>
+        <p class="muted small">Seggi già decisi o non al voto: Dem. ${base.DEM}, Rep. ${base.GOP}${base.OTH ? `, altri ${base.OTH}` : ''}. Restano aperte ${open.length} gare: per la maggioranza ai Dem ne servono ${needD}, ai Rep ${needR}.${o === 'S' && toWin.DEM !== toWin.GOP ? ` Con 50 a 50 decide il vicepresidente, ${toWin.GOP < toWin.DEM ? 'repubblicano' : 'democratico'}.` : ''}</p>
         <div class="scbtns"><button type="button" data-scall="DEM">Tutte le aperte ai Dem</button><button type="button" data-scall="GOP">Tutte le aperte ai Rep</button><button type="button" data-scall="reset">Torna alla proiezione</button>
           ${o === 'H' ? `<label class="muted small"><input type="checkbox" id="scAll"${state.scAll ? ' checked' : ''}> mostra tutte le ${open.length} gare aperte</label>` : ''}</div>
       </div>
@@ -1339,7 +1398,7 @@
     const ol = $('calls');
     if (!all.length) { ol.innerHTML = '<li class="muted">Nessuna gara ancora assegnata.</li>'; return; }
     ol.innerHTML = all.slice(0, 60).map((r) => `<li class="${state.newCalls.has(r.id) ? 'new' : ''}" data-id="${r.id}">
-        <span class="t">${r.calledAt ? fmtTime.format(r.calledAt) : '—'}</span>
+        <span class="t">${r.calledAt ? fmtWhen(r.calledAt) : '—'}</span>
         <span>${esc(raceLabel(r))}: <b class="p ${partyClass(r.winner.party)}">${esc(r.winner.name)}</b> (${esc(r.winner.partyLabel)})${r.gained ? ' <span class="badge flip">strappato</span>' : ''}${r.total ? ` <span class="muted small">${r.winner.pct.toFixed(1)}% · ${r.eevp}% scrutinato</span>` : ''}</span>
       </li>`).join('') + (all.length > 60 ? `<li class="muted">… e altre ${all.length - 60}</li>` : '');
   }
@@ -1373,6 +1432,10 @@
         <span class="cd">${fmtDay.format(d)} · ${closed ? 'chiusi' : leftText(t - now)}</span></li>`;
     }).join('');
     // prossima chiusura nell'intestazione, e avviso quando un gruppo di stati chiude con la pagina aperta
+    if (ARCHIVE) {
+      $('nextClose').textContent = `Archivio: risultati delle elezioni del ${new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(DATE + 'T12:00:00Z'))}`;
+      return;
+    }
     const next = entries.find(([t]) => t > now);
     $('nextClose').textContent = next ? `Prossima chiusura dei seggi alle ${fmtTime.format(new Date(next[0]))} (${next[1].join(', ')}), ${leftText(next[0] - now)}`
       : entries.length ? 'Tutti i seggi sono chiusi' : '';
