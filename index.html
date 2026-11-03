@@ -3,6 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Senato, Camera, Governatori e referendum delle midterm USA 2026 in diretta: mappe dei distretti, risultati per contea, scenari per la maggioranza.">
+<meta name="theme-color" content="#181b24">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Midterm USA 2026 — risultati in diretta">
+<meta property="og:description" content="Senato, Camera, Governatori e referendum: mappe dei distretti, contee, scenari. Dati AP tramite il New York Times.">
+<meta property="og:url" content="https://bryanoberholzer00-bot.github.io/midterm-live/">
+<meta property="og:image" content="https://bryanoberholzer00-bot.github.io/midterm-live/icon-512.png">
+<meta property="og:locale" content="it_IT">
+<meta name="twitter:card" content="summary">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Midterm 2026">
 <title>Midterm USA 2026 — risultati in diretta</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26a14 14 0 0 1 28 0z' fill='%233b7dd8'/%3E%3Cpath d='M16 12a14 14 0 0 1 14 14H16z' fill='%23d64545'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
@@ -12,6 +25,7 @@
   <div class="brand">
     <h1>Midterm USA 2026</h1>
     <p class="sub">Risultati in diretta · Senato, Camera, Governatori</p>
+    <p class="nextclose" id="nextClose"></p>
   </div>
   <div class="status" id="status">
     <span class="dot" id="dot"></span>
@@ -32,6 +46,7 @@
     <button id="notifBtn" type="button">Notifiche</button>
     <button id="soundBtn" type="button">Suono</button>
     <button id="themeBtn" type="button" title="Tema">Tema: auto</button>
+    <button id="installBtn" type="button" hidden>Installa</button>
   </div>
 </header>
 
@@ -48,6 +63,7 @@
   <span class="spacer"></span>
   <div class="viewtoggle" role="group" aria-label="Tipo di mappa">
     <button class="vbtn active" data-view="geo" type="button">Mappa</button>
+    <button class="vbtn" data-view="shift" type="button" title="Spostamento rispetto alle presidenziali 2024">Spostamento</button>
     <button class="vbtn" data-view="tile" type="button">Tessere</button>
   </div>
 </nav>
@@ -56,7 +72,7 @@
   <section class="mapwrap">
     <div class="maphead">
       <h2 id="mapTitle">Senato</h2>
-      <div class="legend">
+      <div class="legend" id="legendRes">
         <span><i class="sw dem"></i>Dem. eletto</span>
         <span><i class="sw gop"></i>Rep. eletto</span>
         <span><i class="sw oth"></i>Altro eletto</span>
@@ -65,6 +81,11 @@
         <span><i class="sw none"></i>Nessun voto</span>
         <span><i class="sw off"></i>Non al voto</span>
       </div>
+    </div>
+    <div class="legend" id="legendShift" hidden>
+      <span><i class="arw-sw dem"></i>Spostamento verso i Dem</span>
+      <span><i class="arw-sw gop"></i>Spostamento verso i Rep</span>
+      <span>lunghezza = punti di margine rispetto alle presidenziali 2024</span>
     </div>
     <div class="mapbox">
       <svg id="map" viewBox="0 0 960 500" role="img" aria-label="Mappa degli stati"></svg>
@@ -75,6 +96,7 @@
         <button type="button" data-z="reset" id="zoomReset" hidden title="Tutta la mappa (0)">Tutta</button>
       </div>
     </div>
+    <p class="small shiftsum" id="shiftSum" hidden></p>
     <p class="muted small maphint">Ctrl + rotella, i pulsanti o il doppio clic su uno stato per ingrandire · trascina per spostarti</p>
   </section>
   <aside class="detail" id="detail">
@@ -128,7 +150,7 @@
     <ol class="calls" id="calls"><li class="muted">Nessuna gara ancora assegnata.</li></ol>
   </div>
   <div class="block">
-    <h2>Chiusura dei seggi <span class="muted small">(ora locale)</span></h2>
+    <h2>Guida alla serata <span class="muted small">(chiusura dei seggi in ora locale e gare in bilico da guardare)</span></h2>
     <ul class="closings" id="closings"></ul>
   </div>
 </section>

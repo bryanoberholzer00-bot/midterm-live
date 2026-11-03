@@ -334,3 +334,25 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 .meastools input[type="search"] { width: 260px; }
 .mlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
 @media (max-width: 900px) { .meastools input[type="search"] { width: 100%; } .mlist { grid-template-columns: 1fr; } }
+
+/* mappa dello spostamento */
+#map .arw { stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke; cursor: pointer; }
+#map .arw.dem { stroke: var(--dem); } #map .arw.gop { stroke: var(--gop); }
+#map .arw:hover { stroke-width: 3.5; }
+.legend[hidden], .shiftsum[hidden] { display: none; }
+#legendShift { margin-bottom: 4px; }
+.arw-sw { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 5px; transform: rotate(-28deg); }
+.arw-sw.dem { background: var(--dem); } .arw-sw.gop { background: var(--gop); transform: rotate(28deg); }
+.shiftsum { margin: 6px 0 0; }
+
+/* guida alla serata */
+.nextclose { margin: 2px 0 0; font-size: .8rem; color: var(--warn); font-weight: 600; }
+.nextclose:empty { display: none; }
+.closings li { grid-template-columns: 52px 1fr auto; }
+.closings .sts { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.closings .stb { font-size: .76rem; padding: 0 5px; border-radius: 4px; background: var(--panel2); }
+.closings .watch { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.closings .wr { font-size: .72rem; padding: 1px 7px; border-radius: 999px; color: var(--muted); }
+.closings .wr.toss { color: var(--fg); border-color: var(--warn); }
+.closings li.closed .stb { opacity: .7; }
+@media (max-width: 900px) { .nextclose { width: 100%; } }

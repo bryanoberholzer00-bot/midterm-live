@@ -37,6 +37,10 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
   ridisegnate a metà decennio); nella vista a tessere ogni quadratino è un distretto.
   Si ingrandisce con Ctrl + rotella, con i pulsanti o con doppio clic su uno stato, e
   da ingrandita si sposta trascinando.
+- **Mappa dello spostamento** (pulsante *Spostamento*): per ogni gara con almeno il 10%
+  scrutinato una freccia verso sinistra (Dem) o destra (Rep), lunga quanto i punti di
+  margine guadagnati rispetto alle presidenziali 2024, più lo spostamento medio pesato
+  per i voti.
 - **Mappa dei distretti dello stato** nel pannello di dettaglio della Camera, con i
   numeri dei distretti; un clic apre il distretto e la sua mappa per contea, con il
   confine del distretto disegnato sopra.
@@ -78,7 +82,13 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
   **ricerca** per stato o candidato in tutte e tre le categorie.
 - **Ultime assegnazioni**, con toast in pagina e, se attivati, notifiche del browser e
   un suono a ogni nuova chiamata (suono diverso per i seggi strappati).
-- **Chiusura dei seggi** in ora locale con conto alla rovescia.
+- **Guida alla serata**: gli orari di chiusura dei seggi in ora locale, con per ciascuno
+  gli stati e le gare in bilico da guardare (un clic le apre); nell'intestazione la
+  prossima chiusura con il conto alla rovescia, e un avviso quando un gruppo di stati
+  chiude con la pagina aperta.
+- **Installabile sul telefono** come app (manifest e service worker): i contorni di
+  stati, distretti e contee restano in memoria, mentre pagina e risultati arrivano
+  sempre dalla rete. Su iPhone: Condividi → Aggiungi alla schermata Home.
 - Pulsante *Condividi* nel pannello dello stato (link alla vista corrente); le nuove
   assegnazioni vengono annunciate ai lettori di schermo e, con la scheda in
   background, contate nel titolo della scheda.
@@ -154,5 +164,9 @@ Districts", vintage 1 gennaio 2026), già semplificati e proiettati come gli sta
 ```bash
 python tools/genera_distretti.py > districts.js
 ```
+
+Le icone si rigenerano con `python tools/genera_icone.py`. Se cambiano i contorni,
+aumentare il numero di versione `CACHE` in `sw.js`, altrimenti chi ha già aperto il sito
+continua a usare quelli vecchi.
 
 Il proxy locale accetta anche `/feed/race/<slug>.json` per i file delle singole gare.

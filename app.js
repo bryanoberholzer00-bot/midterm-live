@@ -36,6 +36,7 @@
   // Confini 2026 dei distretti della Camera (districts.js, caricato in modo asincrono)
   const DIST = () => window.US_DISTRICTS || null;
   const VB0 = { x: 0, y: 0, w: 960, h: 500 };
+  const isGeo = () => state.view === 'geo' || state.view === 'shift';
   const stateBBox = {};
   function bboxOf(d) {
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, m;
@@ -485,17 +486,23 @@
     const byState = {};
     for (const r of state.data[state.office] || []) (byState[r.state] = byState[r.state] || []).push(r);
     const svg = $('map');
-    const geo = state.view === 'geo' && Object.keys(GEO).length;
+    const geo = isGeo() && Object.keys(GEO).length;
     $('zoomctl').hidden = !geo;
+    const shift = state.view === 'shift';
+    $('legendRes').hidden = shift; $('legendShift').hidden = !shift; $('shiftSum').hidden = !shift;
     if (geo) {
       applyVB();
-      // La mappa geografica (fino a 1 MB di contorni) si costruisce una volta per ufficio;
-      // agli aggiornamenti successivi cambiano solo colori e classi.
+      // La mappa geografica (fino a 1 MB di contorni) si costruisce una volta per ufficio e vista;
+      // agli aggiornamenti successivi cambiano solo colori, classi e frecce.
       const incremental = state.office !== 'H' || !!DIST();
-      const key = state.office + (DIST() ? '+d' : '');
-      if (incremental && state.mapKey === key && svg.firstElementChild) { updateGeoMap(byState); return; }
+      const key = state.view + state.office + (DIST() ? '+d' : '');
+      if (incremental && state.mapKey === key && svg.firstElementChild) {
+        if (shift) updateArrows(byState); else updateGeoMap(byState);
+        return;
+      }
       state.mapKey = incremental ? key : '';
-      svg.innerHTML = geoMapHTML(byState);
+      svg.innerHTML = geoMapHTML(byState, shift);
+      if (shift) updateArrows(byState);
     } else {
       state.mapKey = '';
       svg.setAttribute('viewBox', '0 0 770 560'); svg.classList.remove('zoomed'); svg.innerHTML = tileMapHTML(byState);
@@ -507,6 +514,38 @@
     const r = state.byId.get(state.openRace);
     const dd = r && dist[r.state] && dist[r.state][String(r.seatNum)];
     return dd ? `<path class="dsel" d="${dd.d}"/>` : '';
+  }
+
+  // Frecce dello spostamento rispetto alle presidenziali 2024: verso sinistra = Dem, verso destra = Rep
+  function updateArrows(byState) {
+    const svg = $('map'), house = state.office === 'H', dist = house ? DIST() : null;
+    // sfondo neutro (serve anche dopo un cambio di tema)
+    if (house) svg.querySelectorAll('.dist, g.st > path:first-child').forEach((p) => p.setAttribute('fill', state.pal.none));
+    else svg.querySelectorAll('g.st[data-st]').forEach((g) => { const p = g.firstElementChild; if (p) p.setAttribute('fill', (byState[g.dataset.st] || []).length ? state.pal.none : state.pal.off); });
+    svg.querySelectorAll('.sborder').forEach((p) => p.classList.toggle('selected', p.dataset.sb === state.selected));
+    const out = [], used = {};
+    let wSum = 0, sSum = 0, n = 0;
+    const races = state.data[state.office] || [];
+    for (const r of races) {
+      if (!r.total || r.margin === null || !r.hist || r.eevp < 10 || r.uncontested) continue;
+      let c;
+      if (house) { const dd = dist && dist[r.state] && dist[r.state][String(r.seatNum)]; if (!dd) continue; c = dd.c; }
+      else { const g = GEO[r.state]; if (!g) continue; c = g.c; }
+      const k = used[r.state] = (used[r.state] || 0) + 1;      // due gare nello stesso stato (elezioni speciali)
+      const y0 = c[1] + (house ? 0 : (k - 1) * 9);
+      const s = r.margin - r.hist.margin;
+      n++; wSum += r.total; sSum += s * r.total;
+      const L = Math.min(70, Math.abs(s) * 2.4) * (house ? 0.55 : 1);
+      if (L < 1) continue;
+      const a = 28 * Math.PI / 180, cls = s > 0 ? 'dem' : 'gop';
+      const x2 = c[0] + (s > 0 ? -1 : 1) * L * Math.cos(a), y2 = y0 - L * Math.sin(a);
+      out.push(`<line class="arw ${cls}" x1="${c[0]}" y1="${y0.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" marker-end="url(#ah-${cls})" data-race-tip="${r.id}"/>`);
+    }
+    const g = svg.querySelector('.arrows'); if (g) g.innerHTML = out.join('');
+    const avg = wSum ? sSum / wSum : null;
+    $('shiftSum').innerHTML = n
+      ? `Spostamento medio, pesato per i voti: <b class="${avg >= 0 ? 'p dem' : 'p gop'}">${Math.abs(avg).toFixed(1)} punti verso ${avg >= 0 ? 'i Dem' : 'i Rep'}</b> rispetto alle presidenziali 2024, in ${n} gare su ${races.length} con almeno il 10% scrutinato.`
+      : 'Le frecce compaiono quando una gara ha almeno il 10% dei voti scrutinati: mostrano di quanti punti il margine si è spostato rispetto alle presidenziali 2024.';
   }
 
   function updateGeoMap(byState) {
@@ -549,13 +588,13 @@
     return { x: v.x + (ev.clientX - r.left) / r.width * v.w, y: v.y + (ev.clientY - r.top) / r.height * v.h };
   }
   function zoomAt(px, py, k) {
-    if (state.view !== 'geo') return;
+    if (!isGeo()) return;
     const v = state.vb, w = Math.max(48, Math.min(960, v.w * k)), h = w * 500 / 960;
     state.vb = clampVB({ x: px - (px - v.x) * (w / v.w), y: py - (py - v.y) * (h / v.h), w, h });
     applyVB();
   }
   function zoomToState(st) {
-    if (state.view !== 'geo') return;
+    if (!isGeo()) return;
     const b = getStateBBox(st), pad = 14;
     const w = Math.min(960, Math.max(80, b[2] - b[0] + 2 * pad, (b[3] - b[1] + 2 * pad) * 960 / 500)), h = w * 500 / 960;
     state.vb = clampVB({ x: (b[0] + b[2]) / 2 - w / 2, y: (b[1] + b[3]) / 2 - h / 2, w, h });
@@ -573,7 +612,7 @@
     }).join('') };
   }
 
-  function geoMapHTML(byState) {
+  function geoMapHTML(byState, shift) {
     const house = state.office === 'H';
     const dist = house ? DIST() : null;
     const shapes = [], overlay = [], labels = [];
@@ -612,6 +651,10 @@
       }
     }
     if (dist) overlay.push(`<g class="dselg">${dselPath()}</g>`);
+    if (shift) {
+      const mk = (c) => `<marker id="ah-${c}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--${c})"/></marker>`;
+      return `<defs>${mk('dem')}${mk('gop')}</defs>` + shapes.join('') + overlay.join('') + labels.join('') + '<g class="arrows"></g>';
+    }
     return shapes.join('') + overlay.join('') + labels.join('');
   }
 
@@ -658,6 +701,7 @@
     const rows = r.cands.slice(0, 3).map((c) => `<div class="trow"><span><span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)}${c.winner ? ' <span class="chk">✓</span>' : ''}</span><b>${r.total ? c.pct.toFixed(1) + '%' : ''}</b></div>`).join('');
     const parts = [r.total ? `${r.eevp}% scrutinato` : 'Nessun voto'];
     if (r.hist) parts.push(`${histLabel(r.hist)}: ${fmtMargin(r.hist.margin)}`);
+    if (r.hist && r.margin !== null && r.total) { const sw = r.margin - r.hist.margin; parts.push(`spostamento ${Math.abs(sw).toFixed(1)} punti verso ${sw >= 0 ? 'i Dem' : 'i Rep'}`); }
     const cu = catchUp(r);
     if (cu && cu.need !== null && r.eevp >= 20) parts.push(cu.need > 100 ? `${esc(cu.b.name)} non può più recuperare` : `a ${esc(cu.b.name)} serve il ${cu.need.toFixed(0)}% dei restanti`);
     return `<div class="th"><b>${esc(raceLabel(r))}</b>${badge}</div>${rows}<div class="tf">${parts.join(' · ')}</div>`;
@@ -1300,14 +1344,41 @@
       </li>`).join('') + (all.length > 60 ? `<li class="muted">… e altre ${all.length - 60}</li>` : '');
   }
 
+  function leftText(ms) {
+    if (ms < 3600e3) return `tra ${Math.max(1, Math.ceil(ms / 60e3))} min`;
+    const h = Math.floor(ms / 3600e3), m = Math.round((ms % 3600e3) / 60e3);
+    return `tra ${h} h${m ? ` ${m} min` : ''}`;
+  }
+  // Guida alla serata: per ogni orario di chiusura, gli stati e le gare in bilico da guardare
   function renderClosings() {
     const now = Date.now(), groups = new Map();
     for (const c of state.closings) { const k = c.at.getTime(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c.st); }
-    $('closings').innerHTML = [...groups.entries()].map(([t, sts]) => {
-      const d = new Date(t), closed = t <= now, left = t - now;
-      const cd = closed ? 'chiusi' : left < 3600e3 ? `tra ${Math.ceil(left / 60e3)} min` : `tra ${Math.floor(left / 3600e3)} h ${Math.round((left % 3600e3) / 60e3)} min`;
-      return `<li class="${closed ? 'closed' : ''}"><span class="t">${fmtTime.format(d)}</span><span>${sts.join(', ')}</span><span class="cd">${fmtDay.format(d)} · ${cd}</span></li>`;
+    const watch = (sts) => {
+      const set = new Set(sts);
+      const rs = OFFICES.flatMap((o) => (state.data[o] || []).filter((r) => set.has(r.state) && (r.rating === 'tossup' || (r.rating && r.rating.startsWith('lean')))));
+      rs.sort((a, b) => (RATING_RANK[a.rating] ?? 9) - (RATING_RANK[b.rating] ?? 9) || 'SGH'.indexOf(a.office) - 'SGH'.indexOf(b.office));
+      if (!rs.length) return '';
+      const label = (r) => r.office === 'H' ? `${r.state}-${r.seatNum}` : `${r.office === 'S' ? 'Senato' : 'Gov.'} ${r.state}`;
+      const items = rs.slice(0, 8).map((r) => {
+        const st = r.winner ? ` <span class="p ${partyClass(r.winner.party)}">✓</span>` : r.leader ? ` <span class="p ${partyClass(r.leader.party)}">●</span>` : '';
+        return `<button type="button" class="wr${r.rating === 'tossup' ? ' toss' : ''}" data-id="${r.id}" title="${esc(raceLabel(r))} · ${RATING_IT[r.rating]}">${label(r)}${st}</button>`;
+      }).join('');
+      return `<div class="watch">${items}${rs.length > 8 ? `<span class="muted small">+${rs.length - 8}</span>` : ''}</div>`;
+    };
+    const entries = [...groups.entries()];
+    $('closings').innerHTML = entries.map(([t, sts]) => {
+      const d = new Date(t), closed = t <= now;
+      return `<li class="${closed ? 'closed' : ''}"><span class="t">${fmtTime.format(d)}</span>
+        <span><span class="sts">${sts.map((st) => `<button type="button" class="stb" data-st="${st}" title="${esc(STATE_NAMES[st] || st)}">${st}</button>`).join(' ')}</span>${watch(sts)}</span>
+        <span class="cd">${fmtDay.format(d)} · ${closed ? 'chiusi' : leftText(t - now)}</span></li>`;
     }).join('');
+    // prossima chiusura nell'intestazione, e avviso quando un gruppo di stati chiude con la pagina aperta
+    const next = entries.find(([t]) => t > now);
+    $('nextClose').textContent = next ? `Prossima chiusura dei seggi alle ${fmtTime.format(new Date(next[0]))} (${next[1].join(', ')}), ${leftText(next[0] - now)}`
+      : entries.length ? 'Tutti i seggi sono chiusi' : '';
+    const closedNow = new Set(entries.filter(([t]) => t <= now).map(([t]) => t));
+    if (state.closedSeen) for (const [t, sts] of entries) if (closedNow.has(t) && !state.closedSeen.has(t)) toast(`Seggi chiusi alle ${fmtTime.format(new Date(t))}: ${sts.join(', ')}`);
+    if (entries.length) state.closedSeen = closedNow;
   }
 
   function showToasts() {
@@ -1355,7 +1426,7 @@
     const o = p.get('ufficio'); state.office = o && FILES[o] ? o : 'S';
     const s = p.get('stato'); state.selected = s && TILES[s] ? s : null;
     state.openRace = p.get('gara') || null;
-    const v = p.get('vista'); state.view = v === 'tile' ? 'tile' : 'geo';
+    const v = p.get('vista'); state.view = v === 'tile' || v === 'shift' ? v : 'geo';
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.office === state.office));
     document.querySelectorAll('.vbtn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
   }
@@ -1380,13 +1451,13 @@
   });
   $('map').addEventListener('dblclick', (ev) => { const g = ev.target.closest('[data-st]'); if (g) zoomToState(g.dataset.st); });
   $('map').addEventListener('wheel', (ev) => {
-    if (state.view !== 'geo' || !ev.ctrlKey) return;      // Ctrl + rotella (e il pizzico sul trackpad) ingrandisce
+    if (!isGeo() || !ev.ctrlKey) return;      // Ctrl + rotella (e il pizzico sul trackpad) ingrandisce
     ev.preventDefault();
     const p = svgPoint(ev); zoomAt(p.x, p.y, ev.deltaY < 0 ? 0.8 : 1.25);
   }, { passive: false });
   let drag = null;
   $('map').addEventListener('pointerdown', (ev) => {
-    if (state.view !== 'geo' || state.vb.w >= 959 || ev.button !== 0) return;
+    if (!isGeo() || state.vb.w >= 959 || ev.button !== 0) return;
     drag = { x: ev.clientX, y: ev.clientY, vb: { ...state.vb } }; state.dragMoved = false;
   });
   window.addEventListener('pointermove', (ev) => {
@@ -1451,6 +1522,11 @@
   });
   $('keyRaces').addEventListener('click', (ev) => { const c = ev.target.closest('.card'); if (c) openRace(c.dataset.id); });
   $('closeRaces').addEventListener('click', (ev) => { const li = ev.target.closest('li[data-id]'); if (li) openRace(li.dataset.id); });
+  $('closings').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.id) openRace(b.dataset.id);
+    else if (b.dataset.st) { selectState(b.dataset.st); $('detail').scrollIntoView({ block: 'nearest' }); }
+  });
   $('calls').addEventListener('click', (ev) => { const li = ev.target.closest('li[data-id]'); if (li) openRace(li.dataset.id); });
   if (canHover) {
     document.addEventListener('mousemove', onHover);
@@ -1499,12 +1575,12 @@
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     const k = e.key.toLowerCase();
     if (k === '1' || k === '2' || k === '3') switchOffice(OFFICES[Number(k) - 1]);
-    else if (k === 'm') setView(state.view === 'geo' ? 'tile' : 'geo');
+    else if (k === 'm') setView(state.view === 'geo' ? 'shift' : state.view === 'shift' ? 'tile' : 'geo');
     else if (k === '/') { e.preventDefault(); $('search').focus(); }
     else if (k === 'r') refresh();
     else if (k === '+' || k === '=') { const v = state.vb; zoomAt(v.x + v.w / 2, v.y + v.h / 2, 0.6); }
     else if (k === '-') { const v = state.vb; zoomAt(v.x + v.w / 2, v.y + v.h / 2, 1 / 0.6); }
-    else if (k === '0') { state.vb = { ...VB0 }; if (state.view === 'geo') applyVB(); }
+    else if (k === '0') { state.vb = { ...VB0 }; if (isGeo()) applyVB(); }
     else if (k === 'z' && state.selected) zoomToState(state.selected);
     else if (k === 'p') togglePause();
     else if (k === 'escape' && state.selected) { state.selected = null; state.openRace = null; writeHash(); renderMap(); renderDetail(); }
@@ -1538,6 +1614,20 @@
   // altezza reale dell'intestazione fissa, per posizionare il pannello di dettaglio sotto di essa
   const setHdr = () => document.documentElement.style.setProperty('--hdr', document.querySelector('.top').offsetHeight + 'px');
   window.addEventListener('resize', setHdr); setHdr();
+
+  // installabile come app: service worker (cache dei contorni) e pulsante "Installa" dove il browser lo consente
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
+  $('installBtn').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch (e) { /* ignora */ }
+    installEvt = null; $('installBtn').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; });
 
   const savedTheme = store.get('midterm2026-theme', 'auto');
   applyTheme(THEMES.includes(savedTheme) ? savedTheme : 'auto');
