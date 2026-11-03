@@ -1349,13 +1349,21 @@
       if (x1 > x0) bb = [x0, y0, x1, y1];
     }
     const w = bb[2] - bb[0], h = bb[3] - bb[1], pad = Math.max(w, h) * 0.04;
-    const paths = Object.entries(geo.counties).map(([f, c]) => {
+    const vb = `${(bb[0] - pad).toFixed(1)} ${(bb[1] - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}`;
+    const colored = Object.entries(geo.counties).map(([f, c]) => {
       const u = by.get(f);
-      if (!u) return `<path class="out" d="${c.d}" fill="${state.pal.off}"/>`;
+      if (!u) return dd ? '' : `<path class="out" d="${c.d}" fill="${state.pal.off}"/>`;
       const [fill, op] = unitFill(u, mode);
       return `<path d="${c.d}" fill="${fill}" fill-opacity="${op}" data-cty="${f}"/>`;
     }).join('');
-    return `<svg class="cmap" viewBox="${(bb[0] - pad).toFixed(1)} ${(bb[1] - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}" data-race="${r.id}" role="img" aria-label="Risultati per contea">${paths}${outline}</svg>`;
+    if (!dd) return `<svg class="cmap" viewBox="${vb}" data-race="${r.id}" role="img" aria-label="Risultati per contea">${colored}</svg>`;
+    // Distretto della Camera: tutte le contee scure come contesto, poi quelle del distretto colorate
+    // solo dentro il suo confine (i voti di una contea attraversata in parte riguardano solo quel pezzo).
+    const clip = 'clip-' + r.id.replace(/[^A-Za-z0-9_-]/g, '');
+    const context = Object.values(geo.counties).map((c) => `<path class="out" d="${c.d}" fill="${state.pal.off}"/>`).join('');
+    return `<svg class="cmap" viewBox="${vb}" data-race="${r.id}" role="img" aria-label="Risultati per contea">
+      <defs><clipPath id="${clip}"><path d="${dd.d}"/></clipPath></defs>
+      ${context}<g clip-path="url(#${clip})">${colored}</g>${outline}</svg>`;
   }
 
   function legendHTML(mode) {
@@ -1418,7 +1426,7 @@
       note = `<p class="muted small">${r.state === 'AK' ? "L'Alaska non riporta i voti per contea ma per distretto della Camera statale." : 'Mappa per contea non disponibile per questa gara.'}</p>`;
     }
     if (feed.township) note += '<p class="muted small">Qui i voti arrivano per comune: la mappa li somma per contea.</p>';
-    else if (r.office === 'H' && map) note += `<p class="muted small">Contee del distretto, anche quelle attraversate solo in parte${DIST() ? '; la linea chiara è il confine del distretto' : ''}.</p>`;
+    else if (r.office === 'H' && map) note += `<p class="muted small">Contee del distretto, anche quelle attraversate solo in parte${DIST() ? '; i colori si fermano al confine del distretto, la linea chiara' : ''}.</p>`;
     return `<div class="chead"><b>Per contea</b>${toggle}</div>${map}${legend}${note}${missingTable(feed, geo)}${typesHTML(feed, r)}${tsChart(feed.ts)}`;
   }
 

@@ -152,7 +152,7 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=14`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=15`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del
