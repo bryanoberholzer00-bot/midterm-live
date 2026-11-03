@@ -3,7 +3,7 @@
    - Pagina, script e stili: prima la rete, così gli aggiornamenti arrivano subito; la copia salvata serve solo offline.
    - Contorni (states.js, districts.js, counties/) e icone: prima la cache, perché pesano e non cambiano.
      Se cambiano, aumentare CACHE qui sotto. */
-const CACHE = 'midterm-v6';
+const CACHE = 'midterm-v8';
 const CORE = ['./', 'index.html', 'app.js', 'style.css', 'states.js', 'districts.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -27,6 +27,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => save(e.request, res))));
     return;
   }
-  e.respondWith(fetch(e.request).then((res) => save(e.request, res))
+  // cache: 'no-cache' scavalca la cache HTTP di GitHub Pages (10 minuti): pagina e script arrivano sempre nella stessa versione
+  e.respondWith(fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => save(e.request, res))
     .catch(() => caches.match(e.request, { ignoreSearch: true }).then((hit) => hit || caches.match('index.html'))));
 });

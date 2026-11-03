@@ -51,7 +51,8 @@
   }
   function getStateBBox(st) { return stateBBox[st] || (stateBBox[st] = GEO[st] ? bboxOf(GEO[st].d) : [0, 0, 960, 500]); }
 
-  const $ = (id) => document.getElementById(id);
+  const missingEl = {};
+  const $ = (id) => document.getElementById(id) || missingEl[id] || (missingEl[id] = document.createElement('div'));
   const fmtInt = new Intl.NumberFormat('it-IT');
   const fmtTime = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' });
   const fmtTimeS = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -78,38 +79,47 @@
     search: '', pal: {}, trend: [],
     vb: { ...VB0 }, dragMoved: false,
     scen: loadScen(), scOffice: 'S', scAll: false,
-    measStates: null, measAt: 0, measF: 'all', measQ: '', unseen: 0,
+    measStates: null, measAt: 0, measF: 'all', measQ: '', unseen: 0, tick: 0, saver: false,
   };
   const BASE_TITLE = document.title;
   function loadScen() { try { return JSON.parse(store.get(SCEN_KEY, '{}')) || {}; } catch (e) { return {}; } }
 
   /* ---------- rete ---------- */
   // Per ogni file ricordiamo l'ultimo Last-Modified: se non cambia, non rileggiamo né analizziamo il JSON.
-  const jcache = new Map();
+  // Il Last-Modified si salva solo con commitJSON(), dopo che i dati sono stati usati davvero:
+  // se l'elaborazione fallisce, al giro dopo il file viene riletto.
+  const jcache = new Map(), jpending = new Map();
+  const FETCH_TIMEOUT = 40000;
+  function commitJSON(key) { const p = jpending.get(key); if (p) { jcache.set(key, p); jpending.delete(key); } }
   async function getJSON(key, direct, proxy) {
-    const urls = state.useProxy ? [proxy, direct] : [direct, proxy];
+    const urls = ARCHIVE || !proxy ? [direct] : state.useProxy ? [proxy, direct] : [direct, proxy];   // il proxy serve solo la diretta
     let lastErr = null;
     for (const url of urls) {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT);
       try {
-        const r = await fetch(url, { cache: 'no-cache' });
+        const r = await fetch(url, { cache: 'no-cache', signal: ctl.signal });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        state.useProxy = url === proxy;
         const lm = r.headers.get('last-modified');
         const prev = jcache.get(key);
         if (lm && prev && prev.lm === lm) {
           try { if (r.body) r.body.cancel(); } catch (e) { /* ignora */ }
+          state.useProxy = url === proxy;
           return DEMO ? prev.json : null;           // invariato
         }
         const j = await r.json();
         if (j && j.error) throw new Error(j.error);
-        jcache.set(key, { lm, json: DEMO ? j : null });
+        state.useProxy = url === proxy;
+        jpending.set(key, { lm, json: DEMO ? j : null });
         return j;
-      } catch (e) { lastErr = e; }
+      } catch (e) {
+        lastErr = e && e.name === 'AbortError' ? new Error('tempo scaduto') : e;
+      } finally { clearTimeout(timer); }
     }
     throw lastErr;
   }
 
   async function refresh() {
+    if (state.refreshing) { state.again = true; return; }   // un aggiornamento alla volta: quello chiesto nel frattempo parte dopo
     clearTimeout(state.timer);
     if (document.hidden && state.loadedOnce && !state.notify && !state.sound) {
       state.pendingRefresh = true;
@@ -118,33 +128,50 @@
       return;
     }
     state.pendingRefresh = false;
+    state.refreshing = true;
     setStatus('busy', 'Aggiornamento…');
     try {
-      const res = await Promise.all(OFFICES.map((o) => getJSON('o:' + o, `${BASE}results-${FILES[o]}.json`, `feed/${FILES[o]}.json`)));
+      // Risparmio dati: il file della Camera (il più pesante) si scarica un giro su quattro se non la stai guardando
+      state.tick++;
+      const skipHouse = state.saver && state.loadedOnce && state.office !== 'H' && state.tick % 4 !== 0;
+      const res = await Promise.allSettled(OFFICES.map((o) => (o === 'H' && skipHouse ? null
+        : getJSON('o:' + o, `${BASE}results-${FILES[o]}.json`, `feed/${FILES[o]}.json`))));
       let changed = !state.loadedOnce;
-      res.forEach((j, i) => {
-        if (!j) return;
-        changed = true;
+      const errs = [];
+      res.forEach((x, i) => {
         const o = OFFICES[i];
-        ingest(o, j);
-        if (j.pollClosingTimes && j.pollClosingTimes.length) {
-          state.closings = j.pollClosingTimes.map((p) => ({ st: p.reporting_unit.state_postal, at: new Date(p.poll_closing_time) }))
-            .sort((a, b) => a.at - b.at || a.st.localeCompare(b.st));
-        }
-        if (j.resultsMeta && j.resultsMeta.resultsUpdatedAt) state.meta[o] = new Date(j.resultsMeta.resultsUpdatedAt);
+        if (x.status === 'rejected') { errs.push(`${OFFICE_NAME[o]}: ${x.reason && x.reason.message}`); return; }
+        const j = x.value;
+        if (!j) return;
+        const t = j.resultsMeta && j.resultsMeta.resultsUpdatedAt ? new Date(j.resultsMeta.resultsUpdatedAt) : null;
+        if (!DEMO && t && state.meta[o] && t < state.meta[o]) { commitJSON('o:' + o); return; }   // risposta più vecchia di quella mostrata
+        try {
+          ingest(o, j);
+          if (j.pollClosingTimes && j.pollClosingTimes.length) {
+            state.closings = j.pollClosingTimes.map((p) => ({ st: p.reporting_unit.state_postal, at: new Date(p.poll_closing_time) }))
+              .sort((a, b) => a.at - b.at || a.st.localeCompare(b.st));
+          }
+          if (t) state.meta[o] = t;
+          commitJSON('o:' + o);
+          changed = true;
+        } catch (e) { console.error(e); errs.push(`${OFFICE_NAME[o]}: ${e.message}`); }
       });
+      if (errs.length === OFFICES.length) throw new Error(errs.join(' · '));
       if (changed) { detectNewCalls(); recordTrend(); renderAll(); showToasts(); }
-      state.loadedOnce = true;
+      if (OFFICES.some((o) => state.data[o])) state.loadedOnce = true;
       const upd = Math.max(0, ...Object.values(state.meta).map((d) => +d || 0));
-      setStatus('ok', `Dati ${upd && isOld(new Date(upd)) ? 'del ' + fmtDayTime.format(new Date(upd)) : 'delle ' + fmtTimeS.format(new Date(upd || Date.now()))}${changed ? '' : ' · nessuna novità'}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}${ARCHIVE ? ' · ARCHIVIO' : ''}`);
+      setStatus('ok', `Dati ${upd && isOld(new Date(upd)) ? 'del ' + fmtDayTime.format(new Date(upd)) : 'delle ' + fmtTimeS.format(new Date(upd || Date.now()))}${changed ? '' : ' · nessuna novità'}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}${ARCHIVE ? ' · ARCHIVIO' : ''}${state.saver ? ' · risparmio dati' : ''}${errs.length ? ` · non aggiornato: ${errs.map((e) => e.split(':')[0]).join(', ')}` : ''}`, errs.join('\n'));
       refreshCountyPanels(true);
       refreshStatePanel(true);
       if (state.measAt && Date.now() - state.measAt > 110000) loadAllMeasures();
     } catch (e) {
       console.error(e);
       setStatus('err', `Errore: ${e.message}`);
+    } finally {
+      state.refreshing = false;
     }
     schedule();
+    if (state.again) { state.again = false; refresh(); }
   }
 
   function ingest(office, json) {
@@ -318,11 +345,16 @@
   /* ---------- nuove assegnazioni ---------- */
   function detectNewCalls() {
     const now = new Set(); const fresh = [];
-    for (const o of OFFICES) for (const r of state.data[o] || []) {
-      if (r.winner) { now.add(r.id); if (state.calledSeen && !state.calledSeen.has(r.id)) fresh.push(r); }
+    state.seenOffices = state.seenOffices || new Set();
+    for (const o of OFFICES) {
+      const known = state.seenOffices.has(o);
+      for (const r of state.data[o] || []) {
+        if (r.winner) { now.add(r.id); if (known && state.calledSeen && !state.calledSeen.has(r.id)) fresh.push(r); }
+      }
+      if (state.data[o]) state.seenOffices.add(o);
     }
     state.newCalls = new Set(fresh.map((r) => r.id));
-    state.freshList = state.calledSeen ? fresh : [];
+    state.freshList = fresh;
     if (state.freshList.length && state.notify && 'Notification' in window && Notification.permission === 'granted') {
       const body = fresh.slice(0, 5).map((r) => `${raceLabel(r)}: ${r.winner.name} (${r.winner.partyLabel})`).join('\n');
       try { new Notification(fresh.length === 1 ? 'Nuova assegnazione' : `${fresh.length} nuove assegnazioni`, { body }); } catch (e) { /* ignora */ }
@@ -381,7 +413,7 @@
   }
 
   /* ---------- stato / timer ---------- */
-  function setStatus(kind, text) { $('dot').className = 'dot ' + kind; $('statusText').textContent = text; }
+  function setStatus(kind, text, detail) { $('dot').className = 'dot ' + kind; $('statusText').textContent = text; $('statusText').title = detail || ''; }
   function schedule() {
     clearTimeout(state.timer); clearInterval(state.countdown);
     if (state.paused) { $('nextText').textContent = '· in pausa'; return; }
@@ -561,9 +593,13 @@
   function updateArrows(byState) {
     const svg = $('map'), house = state.office === 'H', dist = house ? DIST() : null;
     // sfondo neutro (serve anche dopo un cambio di tema)
-    if (house) svg.querySelectorAll('.dist, g.st > path:first-child').forEach((p) => p.setAttribute('fill', state.pal.none));
-    else svg.querySelectorAll('g.st[data-st]').forEach((g) => { const p = g.firstElementChild; if (p) p.setAttribute('fill', (byState[g.dataset.st] || []).length ? state.pal.none : state.pal.off); });
+    if (house) svg.querySelectorAll('.dist, g.hd > path:first-child').forEach((p) => p.setAttribute('fill', state.pal.none));
+    else svg.querySelectorAll('g.st[data-st]').forEach((g) => {
+      const p = g.firstElementChild; if (p) p.setAttribute('fill', (byState[g.dataset.st] || []).length ? state.pal.none : state.pal.off);
+      g.classList.toggle('selected', state.selected === g.dataset.st);
+    });
     svg.querySelectorAll('.sborder').forEach((p) => p.classList.toggle('selected', p.dataset.sb === state.selected));
+    const dsg = svg.querySelector('.dselg'); if (dsg) dsg.innerHTML = dselPath();
     const out = [], used = {};
     let wSum = 0, sSum = 0, n = 0;
     const races = state.data[state.office] || [];
@@ -600,7 +636,7 @@
         p.setAttribute('fill', colorFor(r));
         p.classList.toggle('flash', state.newCalls.has(r.id));
       });
-      svg.querySelectorAll('g.st > path:first-child').forEach((p) => p.setAttribute('fill', state.pal.none));
+      svg.querySelectorAll('g.hd > path:first-child').forEach((p) => p.setAttribute('fill', state.pal.none));
       svg.querySelectorAll('.sborder').forEach((p) => p.classList.toggle('selected', p.dataset.sb === state.selected));
       const g = svg.querySelector('.dselg'); if (g) g.innerHTML = dselPath();
     } else {
@@ -671,7 +707,7 @@
           const dd = dist[st][String(r.seatNum)];
           return dd ? `<path class="dist${state.newCalls.has(r.id) ? ' flash' : ''}" d="${dd.d}" fill="${colorFor(r)}" data-race-tip="${r.id}"/>` : '';
         }).join('');
-        shapes.push(`<g class="st" data-st="${st}"><path d="${g.d}" fill="${state.pal.none}"/>${ds}</g>`);
+        shapes.push(`<g class="st hd" data-st="${st}"><path d="${g.d}" fill="${state.pal.none}"/>${ds}</g>`);
         overlay.push(`<path class="sborder${sel}" d="${g.d}" data-sb="${st}"/>`);
       } else {
         const fill = house ? (rs.length ? state.pal.none : state.pal.off) : colorFor(rs[0] || null);
@@ -740,8 +776,8 @@
   /* --- tooltip --- */
   function raceTipHTML(r) {
     const badge = r.winner ? '<span class="badge called">Assegnata</span>'
-      : r.status && r.status !== 'too_early' ? `<span class="badge">${STATUS_IT[r.status] || r.status}</span>`
-        : r.rating ? `<span class="badge">${RATING_IT[r.rating] || r.rating}</span>` : '';
+      : r.status && r.status !== 'too_early' ? `<span class="badge">${esc(STATUS_IT[r.status] || r.status)}</span>`
+        : r.rating ? `<span class="badge">${esc(RATING_IT[r.rating] || r.rating)}</span>` : '';
     const rows = r.cands.slice(0, 3).map((c) => `<div class="trow"><span><span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)}${c.winner ? ' <span class="chk">✓</span>' : ''}</span><b>${r.total ? c.pct.toFixed(1) + '%' : ''}</b></div>`).join('');
     const parts = [r.total ? `${r.eevp}% scrutinato` : 'Nessun voto'];
     if (r.hist) parts.push(`${histLabel(r.hist)}: ${fmtMargin(r.hist.margin)}`);
@@ -860,6 +896,7 @@
         const j = await getJSON('st:' + st, BASE + slug + '.json', `feed/race/${slug}.json`);
         if (!j) return false;
         stateFeeds.set(st, parseStateFeed(j));
+        commitJSON('st:' + st);
         return true;
       } catch (e) {
         if (!stateFeeds.has(st)) { stateFeeds.set(st, { err: e.message, measures: [], offices: [] }); return true; }
@@ -889,12 +926,12 @@
   function optLabel(c, fallback) { return c ? OPT_IT[String(c.name).toLowerCase()] || c.name : fallback; }
 
   function measureHTML(m, withState) {
-    const y = m.yes ? m.yes.pct : 0, n = m.no ? m.no.pct : 0, thr = m.threshold || 50;
+    const y = m.yes ? m.yes.pct : 0, n = m.no ? m.no.pct : 0, thr = Number(m.threshold) || 50;
     const passed = m.winner ? m.winner.party === 'YES' : null;
     const yl = optLabel(m.yes, 'Sì'), nl = optLabel(m.no, 'No');
     const badge = m.winner ? `<span class="badge ${passed ? 'yes' : 'no'}">${passed ? 'Approvato' : 'Respinto'}</span>`
       : m.total ? `<span class="badge">Avanti: ${y >= thr ? yl : nl}</span>` : '';
-    return `<div class="measure"${withState ? ` data-mst="${m.state}"` : ''}>
+    return `<div class="measure"${withState ? ` data-mst="${esc(m.state)}"` : ''}>
       <div class="rh"><b>${withState ? esc(m.stateName) + ' · ' : ''}${esc(m.title)}</b>${badge}</div>
       <div class="mdesc"><span class="mtype">${esc(MEASURE_IT[m.officeName] || (OFFICE_IT[m.officeName] ? OFFICE_IT[m.officeName] + ' · conferma' : m.officeName))}</span> ${esc(m.desc)}</div>
       <div class="ynbar"><div class="y" style="width:${y.toFixed(1)}%"></div><div class="n" style="width:${n.toFixed(1)}%"></div><i class="thr" style="left:${thr}%"></i></div>
@@ -931,7 +968,11 @@
 
   // Referendum di tutto il paese: si caricano solo i file degli stati che ne hanno, su richiesta
   async function pool(items, n, fn) { const q = [...items]; await Promise.all(Array.from({ length: n }, async () => { while (q.length) await fn(q.shift()); })); }
-  async function loadAllMeasures() {
+  function loadAllMeasures() {
+    if (!state.measLoading) state.measLoading = loadAllMeasuresInner().finally(() => { state.measLoading = null; });
+    return state.measLoading;
+  }
+  async function loadAllMeasuresInner() {
     if (!state.measStates && ARCHIVE) state.measStates = Object.keys(GEO);
     if (!state.measStates) {
       $('measInfo').textContent = 'Cerco gli stati con referendum…';
@@ -997,9 +1038,9 @@
     const badges = [];
     if (r.winner) badges.push('<span class="badge called">Assegnata</span>');
     else if (r.runoff) badges.push('<span class="badge runoff">Ballottaggio</span>');
-    else if (r.status && r.status !== 'too_early') badges.push(`<span class="badge">${STATUS_IT[r.status] || r.status.replace(/_/g, ' ')}</span>`);
-    if (r.gained && r.winner) badges.push(`<span class="badge flip">Strappato (${PARTY_IT[r.gained] || r.gained})</span>`);
-    if (r.rating) badges.push(`<span class="badge ${r.rating === 'tossup' ? '' : partyClass(r.rating.endsWith('dem') ? 'DEM' : 'GOP')}">${RATING_IT[r.rating] || r.rating}</span>`);
+    else if (r.status && r.status !== 'too_early') badges.push(`<span class="badge">${esc(STATUS_IT[r.status] || String(r.status).replace(/_/g, ' '))}</span>`);
+    if (r.gained && r.winner) badges.push(`<span class="badge flip">Strappato (${esc(PARTY_IT[r.gained] || r.gained)})</span>`);
+    if (r.rating) badges.push(`<span class="badge ${r.rating === 'tossup' ? '' : partyClass(String(r.rating).endsWith('dem') ? 'DEM' : 'GOP')}">${esc(RATING_IT[r.rating] || r.rating)}</span>`);
     if (r.uncontested) badges.push('<span class="badge">Senza avversari</span>');
     const list = full ? r.cands : r.cands.slice(0, 3);
     const cands = list.map((c) => `<li class="cand ${c.winner ? 'win' : ''}${full && c.img ? '' : ' noph'}">
@@ -1036,7 +1077,7 @@
       }
       if (r.rcv) bits.unshift(`<b>Voto a scelta multipla</b>, dopo ${r.rcv.n} turni di conteggio: ${r.rcv.fin.map((c) => `<span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)} <b>${c.pct.toFixed(1)}%</b>`).join(' · ')}.`);
       if (bits.length) analysis = `<div class="analysis">${bits.join('<br>')}</div>`;
-      if (r.url) analysis += `<div class="rep"><a href="${esc(r.url)}" target="_blank" rel="noopener">Pagina NYT della gara ↗</a></div>`;
+      if (r.url) analysis += `<div class="rep"><a href="${esc(/^https:\/\//.test(r.url) ? r.url : '#')}" target="_blank" rel="noopener">Pagina NYT della gara ↗</a></div>`;
       if (r.office === 'H' && (state.data.H || []).filter((x) => x.state === r.state).length > 1) {
         toggle = `<button type="button" class="mini${state.openRace === r.id ? ' on' : ''}" data-open="${r.id}">${state.openRace === r.id ? 'Chiudi contee' : 'Per contea'}</button>`;
       }
@@ -1073,6 +1114,7 @@
         const j = await getJSON('r:' + slug, BASE + slug + '.json', `feed/race/${slug}.json`);
         if (!j) return false;
         raceFeeds.set(r.id, parseRaceFeed(j, r));
+        commitJSON('r:' + slug);
         return true;
       } catch (e) {
         if (!raceFeeds.has(r.id)) { raceFeeds.set(r.id, { err: e.message }); return true; }
@@ -1182,7 +1224,7 @@
       const lag = known[0], lead = known[known.length - 1];
       if (lead.eevp - lag.eevp >= 10) {
         const dir = lag.margin > r.margin ? 'i Dem' : 'i Rep';
-        hint = `<p class="analysis">Resta da contare soprattutto il <b>${(VT_IT[lag.key] || lag.key).toLowerCase()}</b> (${Math.round(lag.eevp)}% scrutinato), che finora va <b>${fmtMargin(lag.margin)}</b>: il margine complessivo, ora ${fmtMargin(r.margin)}, tende a spostarsi verso ${dir}. È una tendenza, non una previsione.</p>`;
+        hint = `<p class="analysis">Resta da contare soprattutto il <b>${esc((VT_IT[lag.key] || lag.key).toLowerCase())}</b> (${Math.round(lag.eevp)}% scrutinato), che finora va <b>${fmtMargin(lag.margin)}</b>: il margine complessivo, ora ${fmtMargin(r.margin)}, tende a spostarsi verso ${dir}. È una tendenza, non una previsione.</p>`;
       }
     }
     return `<h4 class="ch">Come si è votato</h4>
@@ -1469,6 +1511,7 @@
     state.office = o; state.openRace = null; writeHash();
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.office === o));
     renderMap(); renderDetail(); renderKeyRaces();
+    if (o === 'H' && state.saver && state.loadedOnce) refresh();
   }
   function setView(v) {
     state.view = v; writeHash();
@@ -1605,8 +1648,15 @@
     const st = Object.keys(TILES).find((k) => k.toLowerCase() === q || (STATE_NAMES[k] || '').toLowerCase() === q);
     if (st) selectState(st);
   });
-  $('interval').value = store.get('midterm2026-interval', '30');
+  // sul telefono si parte da 60 s e, se la connessione è lenta o chiede di risparmiare, con il risparmio dati attivo
+  const conn = navigator.connection || {};
+  const smallScreen = window.matchMedia('(max-width: 900px)').matches;
+  $('interval').value = store.get('midterm2026-interval', smallScreen ? '60' : '30');
   if (!$('interval').value) $('interval').value = '30';
+  state.saver = store.get('midterm2026-saver', conn.saveData || /(^|-)2g|3g/.test(conn.effectiveType || '') ? '1' : '0') === '1';
+  const showSaver = () => { $('saverBtn').classList.toggle('on', state.saver); $('saverBtn').textContent = state.saver ? 'Risparmio dati attivo' : 'Risparmio dati'; };
+  showSaver();
+  $('saverBtn').addEventListener('click', () => { state.saver = !state.saver; store.set('midterm2026-saver', state.saver ? '1' : '0'); showSaver(); });
   $('interval').addEventListener('change', () => { store.set('midterm2026-interval', $('interval').value); schedule(); });
   function togglePause() {
     state.paused = !state.paused;
@@ -1640,7 +1690,7 @@
     if (k === '1' || k === '2' || k === '3') switchOffice(OFFICES[Number(k) - 1]);
     else if (k === 'm') setView(state.view === 'geo' ? 'shift' : state.view === 'shift' ? 'tile' : 'geo');
     else if (k === '/') { e.preventDefault(); $('search').focus(); }
-    else if (k === 'r') refresh();
+    else if (k === 'r') { if (!e.repeat) refresh(); }
     else if (k === '+' || k === '=') { const v = state.vb; zoomAt(v.x + v.w / 2, v.y + v.h / 2, 0.6); }
     else if (k === '-') { const v = state.vb; zoomAt(v.x + v.w / 2, v.y + v.h / 2, 1 / 0.6); }
     else if (k === '0') { state.vb = { ...VB0 }; if (isGeo()) applyVB(); }

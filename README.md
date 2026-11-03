@@ -123,6 +123,25 @@ il campo "seggio strappato" nei feed è vero/falso e non il partito; la soglia d
 maggioranza va letta dal feed (51 per entrambi nel 2024, 50 per i Rep nel 2026);
 nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
 
+## Robustezza
+
+- Se uno dei tre file nazionali non arriva, gli altri vengono mostrati lo stesso e lo
+  stato dice quale non è aggiornato (passando sopra si legge il motivo); al giro dopo
+  si riprova. Un file viene segnato come "già letto" solo dopo che è stato usato.
+- Ogni richiesta ha un limite di 40 secondi: una connessione bloccata non ferma gli
+  aggiornamenti.
+- Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
+  subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
+- Pagina, script e stili hanno un numero di versione (`?v=8`) e il service worker li
+  chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
+  versioni diverse.
+- **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del
+  telefono): il file della Camera, il più pesante, si aggiorna un giro su quattro quando
+  non la stai guardando. Sugli schermi piccoli l'intervallo predefinito è 60 secondi.
+
+Quando si cambia `app.js`, `style.css` o `index.html`, aumentare il numero `?v=` in
+`index.html`.
+
 ## Modalità demo
 
 http://127.0.0.1:8787/?demo=1 inventa voti e assegnazioni a partire dalle gare vere,

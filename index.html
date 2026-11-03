@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-title" content="Midterm 2026">
 <title>Midterm USA 2026 — risultati in diretta</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 26a14 14 0 0 1 28 0z' fill='%233b7dd8'/%3E%3Cpath d='M16 12a14 14 0 0 1 14 14H16z' fill='%23d64545'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <header class="top">
@@ -45,6 +45,7 @@
     <button id="pauseBtn" type="button">Pausa</button>
     <button id="notifBtn" type="button">Notifiche</button>
     <button id="soundBtn" type="button">Suono</button>
+    <button id="saverBtn" type="button" title="Il file della Camera, il più pesante, si aggiorna un giro su quattro quando non stai guardando la Camera">Risparmio dati</button>
     <button id="themeBtn" type="button" title="Tema">Tema: auto</button>
     <button id="installBtn" type="button" hidden>Installa</button>
   </div>
@@ -165,8 +166,8 @@
 <div class="tip" id="tip" hidden></div>
 <div class="sr-only" id="live" aria-live="polite"></div>
 
-<script src="states.js"></script>
-<script src="districts.js" async onload="window.dispatchEvent(new Event('districts'))"></script>
-<script src="app.js"></script>
+<script src="states.js?v=8"></script>
+<script src="districts.js?v=8" async onload="window.dispatchEvent(new Event('districts'))"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
