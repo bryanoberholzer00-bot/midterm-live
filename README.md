@@ -35,7 +35,7 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
   inserti) o, in alternativa, **mappa a tessere**. Per la Camera la mappa geografica
   disegna i **435 distretti con i confini in vigore per il 2026** (comprese le mappe
   ridisegnate a metà decennio); nella vista a tessere ogni quadratino è un distretto.
-  Si ingrandisce con Ctrl + rotella, con i pulsanti o con doppio clic su uno stato, e
+  Si ingrandisce con la rotella del mouse, con i pulsanti o con doppio clic su uno stato, e
   da ingrandita si sposta trascinando.
 - **Mappa dello spostamento** (pulsante *Spostamento*): per ogni gara con almeno il 10%
   scrutinato una freccia verso sinistra (Dem) o destra (Rep), lunga quanto i punti di
@@ -137,7 +137,7 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=10`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=11`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del

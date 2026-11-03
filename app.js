@@ -1608,10 +1608,15 @@
     selectState(g.dataset.st, d && state.office === 'H' ? d.dataset.raceTip : (state.selected === g.dataset.st ? state.openRace : null));
   });
   $('map').addEventListener('dblclick', (ev) => { const g = ev.target.closest('[data-st]'); if (g) zoomToState(g.dataset.st); });
+  // Rotella del mouse sulla mappa: ingrandisce e riduce attorno al puntatore.
+  // A mappa intera, la rotella verso il basso lascia scorrere la pagina invece di bloccarla.
   $('map').addEventListener('wheel', (ev) => {
-    if (!isGeo() || !ev.ctrlKey) return;      // Ctrl + rotella (e il pizzico sul trackpad) ingrandisce
+    if (!isGeo() || !ev.deltaY) return;
+    if (ev.deltaY > 0 && state.vb.w >= 959 && !ev.ctrlKey) return;
     ev.preventDefault();
-    const p = svgPoint(ev); zoomAt(p.x, p.y, ev.deltaY < 0 ? 0.8 : 1.25);
+    const step = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaMode === 2 ? ev.deltaY * 400 : ev.deltaY;   // righe/pagine -> pixel
+    const k = Math.min(1.6, Math.max(1 / 1.6, Math.exp(step * 0.0022)));
+    const p = svgPoint(ev); zoomAt(p.x, p.y, k);
   }, { passive: false });
   let drag = null;
   $('map').addEventListener('pointerdown', (ev) => {
