@@ -132,9 +132,12 @@
     state.refreshing = true;
     setStatus('busy', 'Aggiornamento…');
     try {
-      // Risparmio dati: il file della Camera (il più pesante) si scarica un giro su quattro se non la stai guardando
+      // Il file della Camera (il più pesante) se non la stai guardando si scarica al massimo ogni 15 secondi
+      // (con l'aggiornamento ogni 5 s, un giro su tre) e, con il risparmio dati, un giro su quattro.
       state.tick++;
-      const skipHouse = state.saver && state.loadedOnce && state.office !== 'H' && state.tick % 4 !== 0;
+      const sec = Number($('interval').value) || 30;
+      const houseEvery = state.office === 'H' ? 1 : Math.max(state.saver ? 4 : 1, Math.ceil(15 / sec));
+      const skipHouse = state.loadedOnce && houseEvery > 1 && state.tick % houseEvery !== 0;
       const res = await Promise.allSettled(OFFICES.map((o) => (o === 'H' && skipHouse ? null
         : getJSON('o:' + o, `${BASE}results-${FILES[o]}.json`, `feed/${FILES[o]}.json`))));
       let changed = !state.loadedOnce;
@@ -1745,7 +1748,7 @@
   // sul telefono si parte da 60 s e, se la connessione è lenta o chiede di risparmiare, con il risparmio dati attivo
   const conn = navigator.connection || {};
   const smallScreen = window.matchMedia('(max-width: 900px)').matches;
-  $('interval').value = store.get('midterm2026-interval', smallScreen ? '60' : '30');
+  $('interval').value = store.get('midterm2026-interval', smallScreen ? '60' : '5');
   if (!$('interval').value) $('interval').value = '30';
   state.saver = store.get('midterm2026-saver', conn.saveData || /(^|-)2g|3g/.test(conn.effectiveType || '') ? '1' : '0') === '1';
   const showSaver = () => { $('saverBtn').classList.toggle('on', state.saver); $('saverBtn').textContent = state.saver ? 'Risparmio dati attivo' : 'Risparmio dati'; };

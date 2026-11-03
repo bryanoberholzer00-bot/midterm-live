@@ -104,7 +104,13 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
 - Tema scuro/chiaro/automatico; scheda, stato selezionato e tipo di mappa restano
   nell'URL (`#ufficio=H&stato=TX&vista=tile`), così un link riapre la stessa vista.
 
-Aggiornamento automatico ogni 30 secondi (15 s – 2 min dal menu), con pulsante Pausa.
+Aggiornamento automatico ogni 5 secondi sul computer ("tempo reale") e ogni 60 sul
+telefono, modificabile dal menu (5 s – 2 min), con pulsante Pausa. Il NYT pubblica una
+nuova versione dei file ogni 20–40 secondi circa: controllare ogni 5 secondi riduce il
+ritardo aggiunto dalla pagina a pochi secondi e costa poco, perché quando un file non è
+cambiato il browser riceve solo una risposta "invariato" di circa 300 byte. Il file
+della Camera, il più pesante, se non la stai guardando si controlla al massimo ogni 15
+secondi.
 La mappa geografica si costruisce una volta per ufficio: agli aggiornamenti cambiano
 solo i colori, senza ridisegnare il megabyte di contorni dei distretti.
 Le richieste sono condizionate (ETag): se il file non è cambiato il server risponde 304
@@ -141,7 +147,7 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=12`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=13`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del

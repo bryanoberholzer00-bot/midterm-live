@@ -3,7 +3,7 @@
    - Pagina, script e stili: prima la rete, così gli aggiornamenti arrivano subito; la copia salvata serve solo offline.
    - Contorni (states.js, districts.js, counties/) e icone: prima la cache, perché pesano e non cambiano.
      Se cambiano, aumentare CACHE qui sotto. */
-const CACHE = 'midterm-v12';
+const CACHE = 'midterm-v13';
 const CORE = ['./', 'index.html', 'app.js', 'style.css', 'states.js', 'districts.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
