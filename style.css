@@ -26,7 +26,7 @@ button, select, input[type="search"] { font: inherit; color: var(--fg); backgrou
 button { cursor: pointer; }
 button:hover { border-color: var(--muted); }
 button.on { background: var(--dem); border-color: var(--dem); color: #fff; }
-input[type="search"] { width: 210px; }
+input[type="search"] { width: 270px; }
 
 /* intestazione */
 .top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
@@ -370,3 +370,11 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 .badge.ev-flip { background: var(--warn); border-color: var(--warn); color: #2a1d05; font-weight: 700; }
 .badge.ev-first { color: var(--fg); }
 @media (max-width: 900px) { .events li { grid-template-columns: auto 1fr; } .events li > span:last-child { grid-column: 1 / -1; } #evBlock .blockhead { flex-wrap: wrap; } }
+
+/* selezione dei distretti */
+#map .hovp, .dmap .hovp { fill: none; stroke: var(--fg); stroke-width: 2.6; vector-effect: non-scaling-stroke; pointer-events: none; }
+#map .dist { cursor: pointer; }
+.dchips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+.dchip { min-width: 36px; padding: 4px 6px; font-size: .8rem; font-weight: 700; border-radius: 6px; border-left: 7px solid var(--c); font-variant-numeric: tabular-nums; }
+.dchip.sel { outline: 2px solid var(--fg); outline-offset: 1px; }
+@media (max-width: 900px) { .dchip { min-width: 42px; padding: 7px 6px; } }

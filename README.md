@@ -41,6 +41,10 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
   scrutinato una freccia verso sinistra (Dem) o destra (Rep), lunga quanto i punti di
   margine guadagnati rispetto alle presidenziali 2024, più lo spostamento medio pesato
   per i voti.
+- **Scegliere un distretto**: sulla mappa della Camera il primo clic su uno stato lo
+  ingrandisce e i clic successivi scelgono il distretto; il distretto sotto il puntatore
+  viene contornato sopra agli altri; nel pannello dello stato ci sono i tasti numerati
+  di tutti i distretti; la ricerca accetta "TX-15", "tx 15" o "Texas 15".
 - **Mappa dei distretti dello stato** nel pannello di dettaglio della Camera, con i
   numeri dei distretti; un clic apre il distretto e la sua mappa per contea, con il
   confine del distretto disegnato sopra.
@@ -137,7 +141,7 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=11`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=12`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del

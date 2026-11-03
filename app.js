@@ -782,7 +782,7 @@
         labels.push(`<text class="lbl${dim}" x="${anchorLeft ? lx + 10 : lx}" y="${ly + 4}" data-st="${st}">${st}</text>`);
       }
     }
-    if (dist) overlay.push(`<g class="dselg">${dselPath()}</g>`);
+    if (dist) overlay.push(`<g class="dselg">${dselPath()}</g><path class="hovp"/>`);
     if (shift) {
       const mk = (c) => `<marker id="ah-${c}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--${c})"/></marker>`;
       return `<defs>${mk('dem')}${mk('gop')}</defs>` + shapes.join('') + overlay.join('') + labels.join('') + '<g class="arrows"></g>';
@@ -884,6 +884,17 @@
     if (html) { tip.innerHTML = html; tipKey = key; }
     tip.hidden = false; moveTip(ev);
   }
+
+  let hovEl = null;
+  document.addEventListener('pointerover', (ev) => {
+    const p = ev.target instanceof Element ? ev.target.closest('#map path.dist, .dmap path.dd') : null;
+    if (p === hovEl) return;
+    const old = hovEl && hovEl.ownerSVGElement && hovEl.ownerSVGElement.querySelector('.hovp');
+    if (old) old.removeAttribute('d');
+    hovEl = p;
+    const h = p && p.ownerSVGElement && p.ownerSVGElement.querySelector('.hovp');
+    if (h) h.setAttribute('d', p.getAttribute('d'));
+  });
 
   /* --- pannello di dettaglio --- */
   function selectState(st, raceId) {
@@ -1082,8 +1093,9 @@
       if (Math.min(dd.b[2] - dd.b[0], dd.b[3] - dd.b[1]) > fs * 1.5) labels.push(`<text x="${dd.c[0]}" y="${(dd.c[1] + fs * 0.35).toFixed(1)}" style="font-size:${fs.toFixed(2)}px">${r.seatNum}</text>`);
     }
     const selR = rs.find((r) => r.id === state.openRace), sd = selR && dist[String(selR.seatNum)];
-    return `<svg class="dmap" viewBox="${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}" role="img" aria-label="Distretti dello stato">${paths.join('')}${sd ? `<path class="dsel" d="${sd.d}"/>` : ''}<g class="dlbl">${labels.join('')}</g></svg>
-      <p class="muted small" style="margin:4px 0 6px">Confini 2026 dei distretti (Census). Clicca un distretto per i dettagli e la mappa per contea.</p>`;
+    return `<svg class="dmap" viewBox="${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}" role="img" aria-label="Distretti dello stato">${paths.join('')}${sd ? `<path class="dsel" d="${sd.d}"/>` : ''}<path class="hovp"/><g class="dlbl">${labels.join('')}</g></svg>
+      <div class="dchips" role="group" aria-label="Distretti">${rs.map((r) => `<button type="button" class="dchip${state.openRace === r.id ? ' sel' : ''}" data-dist="${r.id}" data-race-tip="${r.id}" style="--c:${colorFor(r)}" aria-label="Distretto ${r.seatNum}">${r.seatNum}</button>`).join('')}</div>
+      <p class="muted small" style="margin:4px 0 6px">Confini 2026 dei distretti (Census). Clicca un distretto sulla mappa o il suo numero per i dettagli e la mappa per contea.</p>`;
   }
 
   function raceHTML(r, full) {
@@ -1455,12 +1467,21 @@
       ${hidden ? `<p class="muted small">Altre ${hidden} gare aperte, non competitive, contano secondo la proiezione semplice.</p>` : ''}`;
   }
 
+  function findDistrict(q) {
+    const m = /^([a-z][a-z .]*?)[\s-]*(?:distretto|district|cd)?[\s-]*(\d{1,2})$/i.exec(q.trim());
+    if (!m) return null;
+    const key = m[1].trim().toLowerCase();
+    const st = Object.keys(TILES).find((k) => k.toLowerCase() === key || (STATE_NAMES[k] || '').toLowerCase() === key);
+    return st ? (state.data.H || []).find((r) => r.state === st && r.seatNum === Number(m[2])) || null : null;
+  }
+
   function renderKeyRaces() {
     const q = state.search.trim().toLowerCase();
     const all = $('allRaces').checked;
     let rs;
     if (q) {
-      rs = OFFICES.flatMap((o) => state.data[o] || []).filter((r) =>
+      const dr = findDistrict(q);
+      rs = dr ? [dr] : OFFICES.flatMap((o) => state.data[o] || []).filter((r) =>
         r.stateName.toLowerCase().includes(q) || r.state.toLowerCase() === q || r.cands.some((c) => c.name.toLowerCase().includes(q)));
       $('keyTitle').textContent = `Risultati per "${state.search.trim()}"`;
     } else {
@@ -1605,7 +1626,14 @@
     if (state.dragMoved) { state.dragMoved = false; return; }
     const g = ev.target.closest('[data-st]'); if (!g) return;
     const d = ev.target.closest('[data-race-tip]');
-    selectState(g.dataset.st, d && state.office === 'H' ? d.dataset.raceTip : (state.selected === g.dataset.st ? state.openRace : null));
+    const st = g.dataset.st;
+    const many = (state.data.H || []).filter((r) => r.state === st).length > 1;
+    if (state.office === 'H' && DIST() && isGeo() && state.vb.w >= 959 && many) {
+      zoomToState(st);
+      selectState(st, state.selected === st ? state.openRace : null);
+      return;
+    }
+    selectState(st, d && state.office === 'H' ? d.dataset.raceTip : (state.selected === st ? state.openRace : null));
   });
   $('map').addEventListener('dblclick', (ev) => { const g = ev.target.closest('[data-st]'); if (g) zoomToState(g.dataset.st); });
   // Rotella del mouse sulla mappa: ingrandisce e riduce attorno al puntatore.
@@ -1709,6 +1737,8 @@
     if (e.key === 'Escape') { $('search').value = ''; state.search = ''; renderKeyRaces(); $('search').blur(); return; }
     if (e.key !== 'Enter') return;
     const q = state.search.trim().toLowerCase();
+    const dr = findDistrict(q);
+    if (dr) { openRace(dr.id); if (DIST() && isGeo()) zoomToState(dr.state); return; }
     const st = Object.keys(TILES).find((k) => k.toLowerCase() === q || (STATE_NAMES[k] || '').toLowerCase() === q);
     if (st) selectState(st);
   });
