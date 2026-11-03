@@ -157,10 +157,10 @@
         } catch (e) { console.error(e); errs.push(`${OFFICE_NAME[o]}: ${e.message}`); }
       });
       if (errs.length === OFFICES.length) throw new Error(errs.join(' · '));
-      if (changed) { detectNewCalls(); recordTrend(); renderAll(); showToasts(); }
+      if (changed) { detectNewCalls(); diffEvents(); recordTrend(); renderAll(); showToasts(); }
       if (OFFICES.some((o) => state.data[o])) state.loadedOnce = true;
       const upd = Math.max(0, ...Object.values(state.meta).map((d) => +d || 0));
-      setStatus('ok', `Dati ${upd && isOld(new Date(upd)) ? 'del ' + fmtDayTime.format(new Date(upd)) : 'delle ' + fmtTimeS.format(new Date(upd || Date.now()))}${changed ? '' : ' · nessuna novità'}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}${ARCHIVE ? ' · ARCHIVIO' : ''}${state.saver ? ' · risparmio dati' : ''}${errs.length ? ` · non aggiornato: ${errs.map((e) => e.split(':')[0]).join(', ')}` : ''}`, errs.join('\n'));
+      setStatus('ok', `Risultati ${upd && isOld(new Date(upd)) ? 'del ' + fmtDayTime.format(new Date(upd)) : 'delle ' + fmtTime.format(new Date(upd || Date.now()))} · controllo ${fmtTimeS.format(new Date())}${state.useProxy ? ' (via proxy)' : ''}${DEMO ? ' · DEMO: numeri inventati' : ''}${ARCHIVE ? ' · ARCHIVIO' : ''}${state.saver ? ' · risparmio dati' : ''}${errs.length ? ` · non aggiornato: ${errs.map((e) => e.split(':')[0]).join(', ')}` : ''}`, errs.join('\n'));
       refreshCountyPanels(true);
       refreshStatePanel(true);
       if (state.measAt && Date.now() - state.measAt > 110000) loadAllMeasures();
@@ -381,6 +381,57 @@
 
   /* ---------- andamento dei seggi nella serata ---------- */
   const TREND_KEY = 'midterm2026-trend' + (DEMO ? '-demo' : '') + (ARCHIVE ? '-' + DATE : '');
+
+  /* ---------- cronaca della serata ---------- */
+  // Confronta ogni gara con l'aggiornamento precedente: assegnazioni, primi voti, cambi in testa, grandi blocchi di voti.
+  // Per la Camera solo le gare competitive, altrimenti la cronaca diventerebbe un elenco di 435 righe.
+  const EVENTS_KEY = 'midterm2026-events' + (DEMO ? '-demo' : '');
+  const EV_IT = { call: 'Assegnata', flip: 'Cambio in testa', first: 'Primi voti', jump: 'Nuovi voti' };
+  function loadEvents() { if (ARCHIVE) return []; try { return JSON.parse(store.get(EVENTS_KEY, '[]')) || []; } catch (e) { return []; } }
+  function competitive(r) { return r.office !== 'H' || !r.rating || !String(r.rating).startsWith('solid') || (r.margin !== null && Math.abs(r.margin) < 8); }
+  function diffEvents() {
+    if (ARCHIVE) return;
+    if (!state.events) state.events = loadEvents();
+    const prev = state.prevSnap, now = new Map(), evs = [], at = Date.now();
+    for (const o of OFFICES) for (const r of state.data[o] || []) {
+      const lead = r.winner || r.leader;
+      const snap = { lid: lead ? lead.id : null, eevp: r.eevp, total: r.total, won: !!r.winner };
+      now.set(r.id, snap);
+      const p = prev && prev.get(r.id);
+      if (!p) continue;                       // gara nuova o categoria appena caricata: niente eventi finti
+      const ev = (type, extra) => evs.push({ t: at, type, id: r.id, ...extra });
+      if (!p.won && snap.won) { ev('call', { name: r.winner.name, party: r.winner.party, flip: !!r.gained }); continue; }
+      if (snap.won || !competitive(r)) continue;
+      if (!p.total && r.total) { ev('first', { m: r.margin }); continue; }
+      if (p.lid && snap.lid && p.lid !== snap.lid && r.leader) { ev('flip', { name: r.leader.name, party: r.leader.party, m: r.margin }); continue; }
+      if (snap.eevp - p.eevp >= 15) ev('jump', { eevp: snap.eevp, m: r.margin });
+    }
+    state.prevSnap = now;
+    if (!evs.length) return;
+    state.events = evs.concat(state.events).slice(0, 200);
+    store.set(EVENTS_KEY, JSON.stringify(state.events));
+  }
+  function renderEvents() {
+    const box = $('events');
+    if (ARCHIVE) { box.innerHTML = '<li class="muted">In archivio la cronaca non c\'è: si costruisce mentre la pagina è aperta durante lo spoglio.</li>'; return; }
+    if (!state.events) state.events = loadEvents();
+    const f = state.evF || 'all';
+    const list = state.events.filter((e) => {
+      const r = state.byId.get(e.id); if (!r) return false;
+      return f === 'all' || (f === 'call' ? e.type === 'call' : r.office === f);
+    }).slice(0, 60);
+    if (!list.length) { box.innerHTML = `<li class="muted">${state.events.length ? 'Nessun evento per questo filtro.' : 'Qui compaiono, man mano che arrivano, i primi voti, i cambi in testa, i grandi blocchi di schede e le assegnazioni. Si costruisce mentre la pagina è aperta.'}</li>`; return; }
+    box.innerHTML = list.map((e) => {
+      const r = state.byId.get(e.id);
+      const who = e.name ? ` <b class="p ${partyClass(e.party)}">${esc(e.name)}</b>` : '';
+      let txt;
+      if (e.type === 'call') txt = `${who} vince${e.flip ? ' e strappa il seggio' : ''}`;
+      else if (e.type === 'flip') txt = `${who} passa in testa${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
+      else if (e.type === 'first') txt = ` arrivano i primi voti${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
+      else txt = ` scrutinato il ${e.eevp}%${e.m !== null && e.m !== undefined ? `, ${fmtMargin(e.m)}` : ''}`;
+      return `<li class="ev ${e.type}" data-id="${esc(e.id)}"><span class="t">${fmtWhen(new Date(e.t))}</span><span class="badge ev-${e.type}">${EV_IT[e.type]}</span><span>${esc(raceLabel(r))}:${txt}</span></li>`;
+    }).join('');
+  }
   function seatsFn(office) {
     const pc = state.control[office], races = state.data[office] || [];
     const bal = pc && pc.party_balance;
@@ -450,7 +501,7 @@
       const rs = state.data[o] || [];
       $('cnt-' + o).textContent = `${rs.filter((r) => r.winner).length}/${rs.length}`;
     }
-    renderMap(); renderDetail(); renderClose(); renderScen(); renderKeyRaces(); renderCalls(); renderClosings();
+    renderMap(); renderDetail(); renderEvents(); renderClose(); renderScen(); renderKeyRaces(); renderCalls(); renderClosings();
   }
 
   /* --- bilancio delle camere --- */
@@ -1634,6 +1685,13 @@
     else if (b.dataset.st) { selectState(b.dataset.st); $('detail').scrollIntoView({ block: 'nearest' }); }
   });
   $('calls').addEventListener('click', (ev) => { const li = ev.target.closest('li[data-id]'); if (li) openRace(li.dataset.id); });
+  $('events').addEventListener('click', (ev) => { const li = ev.target.closest('li[data-id]'); if (li) openRace(li.dataset.id); });
+  $('evFilter').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-ef]'); if (!b) return;
+    state.evF = b.dataset.ef;
+    $('evFilter').querySelectorAll('[data-ef]').forEach((x) => x.classList.toggle('active', x === b));
+    renderEvents();
+  });
   if (canHover) {
     document.addEventListener('mousemove', onHover);
     document.addEventListener('mouseleave', () => { tip.hidden = true; tipKey = ''; });

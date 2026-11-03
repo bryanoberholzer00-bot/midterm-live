@@ -51,6 +51,11 @@ quel caso passa da sola a `/feed/<ufficio>.json`).
   percentuali, quota scrutinata e confronto 2024.
 - **Proiezione semplice** sotto ogni camera: seggi già assegnati + chi è in vantaggio
   dove si conta + rating NYT dove non ci sono voti. Non è un modello statistico.
+- **Cronaca della serata**: confrontando ogni aggiornamento con il precedente, la pagina
+  annota assegnazioni, primi voti, cambi in testa e grandi blocchi di schede (almeno 15
+  punti di scrutinio in un colpo), con l'ora; per la Camera solo le gare competitive.
+  Si filtra per tipo o per camera, un clic apre la gara, e resta salvata nel browser se
+  ricarichi la pagina.
 - **In bilico**: le 12 gare aperte con lo scarto più piccolo, con la quota dei voti
   restanti che servirebbe a chi insegue.
 - **Pannello di dettaglio** per stato, fisso a lato della mappa: foto dei candidati, voti,
@@ -132,7 +137,7 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=8`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=9`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del

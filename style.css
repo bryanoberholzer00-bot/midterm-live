@@ -356,3 +356,17 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 .closings .wr.toss { color: var(--fg); border-color: var(--warn); }
 .closings li.closed .stb { opacity: .7; }
 @media (max-width: 900px) { .nextclose { width: 100%; } }
+
+/* cronaca della serata */
+.events { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.events li { display: grid; grid-template-columns: minmax(48px, auto) 112px 1fr; gap: 10px; align-items: baseline; padding: 7px 12px; border-top: 1px solid var(--line); font-size: .9rem; }
+.events li:first-child { border-top: none; }
+.events li[data-id] { cursor: pointer; }
+.events li[data-id]:hover { background: var(--panel2); }
+.events li.muted { display: block; }
+.events .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.events .badge { text-align: center; }
+.badge.ev-call { background: var(--ok); border-color: var(--ok); color: #06241a; font-weight: 700; }
+.badge.ev-flip { background: var(--warn); border-color: var(--warn); color: #2a1d05; font-weight: 700; }
+.badge.ev-first { color: var(--fg); }
+@media (max-width: 900px) { .events li { grid-template-columns: auto 1fr; } .events li > span:last-child { grid-column: 1 / -1; } #evBlock .blockhead { flex-wrap: wrap; } }
