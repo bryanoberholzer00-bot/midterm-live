@@ -59,6 +59,7 @@
   const fmtDay = new Intl.DateTimeFormat('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
   const fmtDayTime = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const isOld = (d) => Math.abs(Date.now() - d) > 18 * 3600e3;
+  const pctS = (v) => (!v ? '0' : v < 1 ? '<1' : String(Math.round(v)));
   const fmtWhen = (d) => (isOld(d) ? fmtDayTime.format(d) : fmtTime.format(d));
   const atWhen = (d) => (isOld(d) ? `il ${fmtDayTime.format(d)}` : `alle ${fmtTime.format(d)}`);
 
@@ -217,7 +218,7 @@
       const v = (c.votes && c.votes.total) || 0;
       return {
         id: c.nyt_id, name: candName(m, c.nyt_id),
-        party: pid, partyLabel: PARTY_IT[pid] || (m.party && m.party.abbreviation) || pid,
+        party: pid, partyLabel: PARTY_IT[pid] || ({ Other: 'Altro', Nonpartisan: 'Apartitico', Independent: 'Ind.' })[m.party && m.party.abbreviation] || (m.party && m.party.abbreviation) || pid,
         incumbent: !!m.incumbent, order: m.order || 99, img: m.img_url || null,
         votes: v, pct: total ? v / total * 100 : 0,
         winner: won.includes(c.nyt_id), runoff: runoff.includes(c.nyt_id),
@@ -428,7 +429,7 @@
       if (e.type === 'call') txt = `${who} vince${e.flip ? ' e strappa il seggio' : ''}`;
       else if (e.type === 'flip') txt = `${who} passa in testa${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
       else if (e.type === 'first') txt = ` arrivano i primi voti${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
-      else txt = ` scrutinato il ${e.eevp}%${e.m !== null && e.m !== undefined ? `, ${fmtMargin(e.m)}` : ''}`;
+      else txt = ` scrutinato il ${pctS(e.eevp)}%${e.m !== null && e.m !== undefined ? `, ${fmtMargin(e.m)}` : ''}`;
       return `<li class="ev ${e.type}" data-id="${esc(e.id)}"><span class="t">${fmtWhen(new Date(e.t))}</span><span class="badge ev-${e.type}">${EV_IT[e.type]}</span><span>${esc(raceLabel(r))}:${txt}</span></li>`;
     }).join('');
   }
@@ -811,7 +812,7 @@
             rs.map((r, i) => `<rect x="${x + 2}" y="${(y + 2 + i * h).toFixed(1)}" width="${SZ - 4}" height="${(h - 4).toFixed(1)}" rx="4" fill="${colorFor(r)}"/>`).join('');
         }
         const r0 = rs[0];
-        const sub = r0 ? (r0.winner ? r0.winner.name.split(' ').pop() : r0.leader ? r0.leader.name.split(' ').pop() : (r0.eevp ? r0.eevp + '%' : '')) : '';
+        const sub = r0 ? (r0.winner ? r0.winner.name.split(' ').pop() : r0.leader ? r0.leader.name.split(' ').pop() : (r0.eevp ? pctS(r0.eevp) + '%' : '')) : '';
         parts.push(`<g class="tile${sel}${flash}${dim}" data-st="${st}">${bg}<text x="${x + SZ / 2}" y="${y + 30}" text-anchor="middle">${st}</text><text x="${x + SZ / 2}" y="${y + 50}" text-anchor="middle" style="font-size:11px;font-weight:500">${esc(sub)}</text></g>`);
       }
     }
@@ -830,9 +831,9 @@
       : r.status && r.status !== 'too_early' ? `<span class="badge">${esc(STATUS_IT[r.status] || r.status)}</span>`
         : r.rating ? `<span class="badge">${esc(RATING_IT[r.rating] || r.rating)}</span>` : '';
     const rows = r.cands.slice(0, 3).map((c) => `<div class="trow"><span><span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)}${c.winner ? ' <span class="chk">✓</span>' : ''}</span><b>${r.total ? c.pct.toFixed(1) + '%' : ''}</b></div>`).join('');
-    const parts = [r.total ? `${r.eevp}% scrutinato` : 'Nessun voto'];
+    const parts = [r.total ? `${pctS(r.eevp)}% scrutinato` : 'Nessun voto'];
     if (r.hist) parts.push(`${histLabel(r.hist)}: ${fmtMargin(r.hist.margin)}`);
-    if (r.hist && r.margin !== null && r.total) { const sw = r.margin - r.hist.margin; parts.push(`spostamento ${Math.abs(sw).toFixed(1)} punti verso ${sw >= 0 ? 'i Dem' : 'i Rep'}`); }
+    if (r.hist && r.margin !== null && r.total && r.eevp >= 10) { const sw = r.margin - r.hist.margin; parts.push(`spostamento ${Math.abs(sw).toFixed(1)} punti verso ${sw >= 0 ? 'i Dem' : 'i Rep'}`); }
     const cu = catchUp(r);
     if (cu && cu.need !== null && r.eevp >= 20) parts.push(cu.need > 100 ? `${esc(cu.b.name)} non può più recuperare` : `a ${esc(cu.b.name)} serve il ${cu.need.toFixed(0)}% dei restanti`);
     return `<div class="th"><b>${esc(raceLabel(r))}</b>${badge}</div>${rows}<div class="tf">${parts.join(' · ')}</div>`;
@@ -854,7 +855,7 @@
     const name = (u && u.name) || (geo && geo.counties[fips] && geo.counties[fips].n) || 'Contea';
     if (!u) return `<div class="th"><b>${esc(name)}</b></div><div class="tf">Fuori dalla gara</div>`;
     const rows = u.cands.slice(0, 3).map((c) => `<div class="trow"><span><span class="p ${partyClass(c.party)}">${esc(PARTY_IT[c.party] || c.party)}</span> ${esc(c.name)}</span><b>${u.total ? c.pct.toFixed(1) + '%' : ''}</b></div>`).join('');
-    const parts = [u.total ? `${u.eevp}% scrutinato · ${fmtInt.format(u.total)} voti` : `Nessun voto · ~${fmtInt.format(u.expected)} attesi`];
+    const parts = [u.total ? `${pctS(u.eevp)}% scrutinato · ${fmtInt.format(u.total)} voti` : `Nessun voto · ~${fmtInt.format(u.expected)} attesi`];
     if (u.hist !== null) parts.push(`2024: ${fmtMargin(u.hist)}`);
     if (u.hist !== null && u.margin !== null) { const s = u.margin - u.hist; parts.push(`spostamento ${Math.abs(s).toFixed(1)} punti verso ${s >= 0 ? 'i Dem' : 'i Rep'}`); }
     return `<div class="th"><b>${esc(name)}</b></div>${rows}<div class="tf">${parts.join(' · ')}</div>`;
@@ -987,7 +988,7 @@
       <div class="mdesc"><span class="mtype">${esc(MEASURE_IT[m.officeName] || (OFFICE_IT[m.officeName] ? OFFICE_IT[m.officeName] + ' · conferma' : m.officeName))}</span> ${esc(m.desc)}</div>
       <div class="ynbar"><div class="y" style="width:${y.toFixed(1)}%"></div><div class="n" style="width:${n.toFixed(1)}%"></div><i class="thr" style="left:${thr}%"></i></div>
       <div class="rep"><span><b class="yes">${yl} ${m.total ? y.toFixed(1) + '%' : '—'}</b> · <b class="no">${nl} ${m.total ? n.toFixed(1) + '%' : '—'}</b></span>
-        <span>${m.total ? m.eevp + '% scrutinato' : 'Nessun voto'}${thr !== 50 ? ` · serve il ${thr}% di ${yl}` : ''}</span></div>
+        <span>${m.total ? pctS(m.eevp) + '% scrutinato' : 'Nessun voto'}${thr !== 50 ? ` · serve il ${thr}% di ${yl}` : ''}</span></div>
     </div>`;
   }
 
@@ -995,7 +996,7 @@
     const top = o.cands.slice(0, 2).map((c) => `<span class="oc${c.winner ? ' win' : ''}"><span class="p ${partyClass(c.party)}">${esc(c.partyLabel)}</span> ${esc(c.name)}${o.total ? ` <b>${c.pct.toFixed(1)}%</b>` : ''}${c.winner ? ' <span class="chk">✓</span>' : ''}</span>`).join('');
     const label = (OFFICE_IT[o.officeName] || o.officeName) + (o.seatName && o.seatName !== o.officeName ? ` · ${o.seatName}` : '');
     return `<div class="orow"><div class="on">${esc(label)}${o.winner ? ' <span class="badge called">Assegnata</span>' : ''}${o.gained && o.winner ? ' <span class="badge flip">Strappata</span>' : ''}</div>
-      <div class="ocs">${top}</div><div class="rep"><span>${o.total ? o.eevp + '% scrutinato' : 'Nessun voto'}</span></div></div>`;
+      <div class="ocs">${top}</div><div class="rep"><span>${o.total ? pctS(o.eevp) + '% scrutinato' : 'Nessun voto'}</span></div></div>`;
   }
 
   function statePanelInner(st) {
@@ -1102,7 +1103,7 @@
         <span class="track"><span class="fill ${partyClass(c.party)}" style="width:${Math.min(100, c.pct).toFixed(1)}%"></span></span>
       </li>`).join('');
     const rep = r.total
-      ? `<span>Scrutinato: <b>${r.eevp}%</b> del voto atteso</span><span>${fmtInt.format(r.total)} voti · ${r.precReporting}/${r.precTotal} sezioni</span>`
+      ? `<span>Scrutinato: <b>${pctS(r.eevp)}%</b> del voto atteso</span><span>${fmtInt.format(r.total)} voti · ${r.precReporting}/${r.precTotal} sezioni</span>`
       : '<span>Nessun voto scrutinato</span>';
     const when = r.calledAt ? `<span>Assegnata ${atWhen(r.calledAt)}</span>` : (full && r.updatedAt && r.total ? `<span>Aggiornata ${atWhen(r.updatedAt)}</span>` : '');
     const title = full ? (r.office === 'H' ? `Distretto ${r.seatNum}` : OFFICE_ONE[r.office] + (r.special ? ' (speciale)' : '')) : raceLabel(r);
@@ -1120,7 +1121,7 @@
       if (r.hist) {
         const who = r.hist.margin >= 0 ? r.hist.dem : r.hist.rep;
         let s = `${esc(histLabel(r.hist))}: <b>${fmtMargin(r.hist.margin)}</b>${who ? ` (${esc(who)})` : ''}.`;
-        if (r.margin !== null) {
+        if (r.margin !== null && r.eevp >= 10) {
           const swing = r.margin - r.hist.margin;
           s += ` Ora <b>${fmtMargin(r.margin)}</b>: spostamento di <b>${Math.abs(swing).toFixed(1)}</b> punti verso ${swing >= 0 ? 'i Dem' : 'i Rep'}.`;
         }
@@ -1350,7 +1351,7 @@
     if (!rows.length) return '';
     return `<h4 class="ch">${anyVotes ? 'Dove mancano più voti' : 'Dove si attendono più voti'}</h4>
       <table class="ctable"><thead><tr><th>${feed.hasFips ? 'Contea' : 'Zona'}</th><th>Scrutinato</th><th>Margine</th><th>${anyVotes ? 'Mancano' : 'Attesi'}</th></tr></thead><tbody>
-      ${rows.map(({ u, rem }) => `<tr><td>${esc(name(u))}</td><td>${u.total ? u.eevp + '%' : '—'}</td>
+      ${rows.map(({ u, rem }) => `<tr><td>${esc(name(u))}</td><td>${u.total ? pctS(u.eevp) + '%' : '—'}</td>
         <td class="${marginClass(u.margin)}">${u.margin !== null ? fmtMargin(u.margin) : u.hist !== null ? `<span class="muted">2024: ${fmtMargin(u.hist)}</span>` : '—'}</td>
         <td>~${fmtInt.format(rem)}</td></tr>`).join('')}
       </tbody></table>`;
@@ -1399,13 +1400,13 @@
 
   /* --- in bilico / gare chiave / ricerca --- */
   function renderClose() {
-    const rs = OFFICES.flatMap((o) => state.data[o] || []).filter((r) => !r.winner && r.total > 0 && r.margin !== null)
+    const rs = OFFICES.flatMap((o) => state.data[o] || []).filter((r) => !r.winner && r.total > 0 && r.margin !== null && Math.abs(r.margin) < 10)
       .sort((a, b) => Math.abs(a.margin) - Math.abs(b.margin)).slice(0, 12);
     const box = $('closeRaces');
-    if (!rs.length) { box.innerHTML = '<li class="empty muted">Si riempie quando arrivano i primi voti.</li>'; return; }
+    if (!rs.length) { box.innerHTML = `<li class="empty muted">${OFFICES.some((o) => (state.data[o] || []).some((r) => r.total > 0)) ? 'Per ora nessuna gara aperta con uno scarto sotto i 10 punti.' : 'Si riempie quando arrivano i primi voti.'}</li>`; return; }
     box.innerHTML = rs.map((r) => {
       const cu = catchUp(r);
-      const sub = [`${r.eevp}% scrutinato`];
+      const sub = [`${pctS(r.eevp)}% scrutinato`];
       if (cu && cu.need !== null) sub.push(cu.need > 100 ? `${esc(cu.b.name)} non può più recuperare` : `a ${esc(cu.b.name)} serve il ${cu.need.toFixed(1)}% dei restanti`);
       return `<li data-id="${r.id}"><span class="ofc">${OFFICE_ONE[r.office]}</span><b>${esc(raceLabel(r).replace(/ — (Senato|Governatore)( \(speciale\))?$/, '$2'))}</b>
         <span class="mg ${marginClass(r.margin)}">${fmtMargin(r.margin)}</span><span class="sub">${sub.join(' · ')}</span></li>`;
@@ -1439,7 +1440,7 @@
     const btn = (q, p) => `<button type="button" data-pick="${q}" class="${q === p ? 'active ' : ''}${q === 'DEM' ? 'dem' : q === 'GOP' ? 'gop' : 'und'}" aria-label="${q === 'DEM' ? 'Vincono i Dem' : q === 'GOP' ? 'Vincono i Rep' : 'Non deciso'}">${q === 'DEM' ? 'D' : q === 'GOP' ? 'R' : '?'}</button>`;
     const rows = shown.map((r) => {
       const p = pick(r);
-      const cur = r.total ? `${r.margin !== null ? fmtMargin(r.margin) : esc(r.cands[0].name)} · ${r.eevp}% scrutinato` : (RATING_IT[r.rating] || 'nessun voto');
+      const cur = r.total ? `${r.margin !== null ? fmtMargin(r.margin) : esc(r.cands[0].name)} · ${pctS(r.eevp)}% scrutinato` : (RATING_IT[r.rating] || 'nessun voto');
       return `<li data-id="${r.id}" class="${state.scen[r.id] ? 'mod' : ''}"><span class="nm">${esc(raceLabel(r))}</span><span class="cur">${cur}</span><span class="pick">${btn('DEM', p)}${btn('NONE', p)}${btn('GOP', p)}</span></li>`;
     }).join('');
     $('scen').innerHTML = `
@@ -1492,7 +1493,7 @@
     if (!all.length) { ol.innerHTML = '<li class="muted">Nessuna gara ancora assegnata.</li>'; return; }
     ol.innerHTML = all.slice(0, 60).map((r) => `<li class="${state.newCalls.has(r.id) ? 'new' : ''}" data-id="${r.id}">
         <span class="t">${r.calledAt ? fmtWhen(r.calledAt) : '—'}</span>
-        <span>${esc(raceLabel(r))}: <b class="p ${partyClass(r.winner.party)}">${esc(r.winner.name)}</b> (${esc(r.winner.partyLabel)})${r.gained ? ' <span class="badge flip">strappato</span>' : ''}${r.total ? ` <span class="muted small">${r.winner.pct.toFixed(1)}% · ${r.eevp}% scrutinato</span>` : ''}</span>
+        <span>${esc(raceLabel(r))}: <b class="p ${partyClass(r.winner.party)}">${esc(r.winner.name)}</b> (${esc(r.winner.partyLabel)})${r.gained ? ' <span class="badge flip">strappato</span>' : ''}${r.total ? ` <span class="muted small">${r.winner.pct.toFixed(1)}% · ${pctS(r.eevp)}% scrutinato</span>` : ''}</span>
       </li>`).join('') + (all.length > 60 ? `<li class="muted">… e altre ${all.length - 60}</li>` : '');
   }
 
