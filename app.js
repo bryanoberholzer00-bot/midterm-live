@@ -91,15 +91,16 @@
   // se l'elaborazione fallisce, al giro dopo il file viene riletto.
   const jcache = new Map(), jpending = new Map();
   const FETCH_TIMEOUT = 40000;
+  const HAS_PROXY = ['localhost', '127.0.0.1'].includes(location.hostname);
   function commitJSON(key) { const p = jpending.get(key); if (p) { jcache.set(key, p); jpending.delete(key); } }
   async function getJSON(key, direct, proxy) {
-    const urls = ARCHIVE || !proxy ? [direct] : state.useProxy ? [proxy, direct] : [direct, proxy];   // il proxy serve solo la diretta
-    let lastErr = null;
+    const urls = ARCHIVE || !proxy || !HAS_PROXY ? [direct] : state.useProxy ? [proxy, direct] : [direct, proxy];   // il proxy serve solo la diretta, in locale
+    let lastErr = null, directErr = null;
     for (const url of urls) {
       const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT);
       try {
         const r = await fetch(url, { cache: 'no-cache', signal: ctl.signal });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) { const he = new Error(`HTTP ${r.status}`); if (url === direct) he.httpStatus = r.status; throw he; }
         const lm = r.headers.get('last-modified');
         const prev = jcache.get(key);
         if (lm && prev && prev.lm === lm) {
@@ -114,9 +115,10 @@
         return j;
       } catch (e) {
         lastErr = e && e.name === 'AbortError' ? new Error('tempo scaduto') : e;
+        if (url === direct) directErr = lastErr;
       } finally { clearTimeout(timer); }
     }
-    throw lastErr;
+    throw directErr || lastErr;
   }
 
   async function refresh() {
@@ -160,6 +162,8 @@
           changed = true;
         } catch (e) { console.error(e); errs.push(`${OFFICE_NAME[o]}: ${e.message}`); }
       });
+      const nytError = res.some((x) => x.status === 'rejected' && x.reason && x.reason.httpStatus);
+      state.failStreak = nytError ? (state.failStreak || 0) + 1 : 0;
       if (errs.length === OFFICES.length) throw new Error(errs.join(' · '));
       if (changed) { detectNewCalls(); diffEvents(); recordTrend(); renderAll(); showToasts(); }
       if (OFFICES.some((o) => state.data[o])) state.loadedOnce = true;
@@ -473,9 +477,14 @@
     clearTimeout(state.timer); clearInterval(state.countdown);
     if (state.paused) { $('nextText').textContent = '· in pausa'; return; }
     const sec = Number($('interval').value) || 30;
-    state.nextAt = Date.now() + sec * 1000;
-    state.timer = setTimeout(refresh, sec * 1000);
-    const tick = () => { const left = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000)); $('nextText').textContent = `· prossimo tra ${left} s`; };
+    const n = state.failStreak || 0;
+    const wait = n ? Math.min(120, Math.max(sec, 5 * Math.pow(2, n))) : sec;
+    state.nextAt = Date.now() + wait * 1000;
+    state.timer = setTimeout(refresh, wait * 1000);
+    const tick = () => {
+      const left = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));
+      $('nextText').textContent = n ? `· errori dal NYT: nuovo tentativo tra ${left} s` : `· prossimo tra ${left} s`;
+    };
     tick(); state.countdown = setInterval(tick, 1000);
   }
 

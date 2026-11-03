@@ -143,11 +143,16 @@ nei referendum le opzioni non sono sempre Sì/No (For/Against, Repeal/Retain).
 - Se uno dei tre file nazionali non arriva, gli altri vengono mostrati lo stesso e lo
   stato dice quale non è aggiornato (passando sopra si legge il motivo); al giro dopo
   si riprova. Un file viene segnato come "già letto" solo dopo che è stato usato.
+- **Rallentamento automatico**: se il NYT risponde con un errore o un rifiuto (per
+  esempio 429, troppe richieste), l'attesa raddoppia a ogni giro (10, 20, 40, 80 secondi,
+  massimo 2 minuti) e lo stato lo dice; alla prima risposta corretta si torna subito
+  all'intervallo normale. Una connessione caduta non fa rallentare. R o Riprendi fanno un
+  tentativo immediato. Online il proxy di riserva non si usa (esiste solo in locale).
 - Ogni richiesta ha un limite di 40 secondi: una connessione bloccata non ferma gli
   aggiornamenti.
 - Un aggiornamento alla volta: quelli chiesti nel frattempo (tasto R, Riprendi) partono
   subito dopo; una risposta più vecchia di quella già mostrata viene scartata.
-- Pagina, script e stili hanno un numero di versione (`?v=13`) e il service worker li
+- Pagina, script e stili hanno un numero di versione (`?v=14`) e il service worker li
   chiede senza passare dalla cache HTTP, così dopo una pubblicazione non si mescolano
   versioni diverse.
 - **Risparmio dati** (si attiva da solo su reti lente o con il risparmio dati del
