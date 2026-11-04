@@ -387,3 +387,8 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 /* schermi stretti: il filtro della cronaca scorre da solo invece di allargare la pagina */
 #evFilter { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 #evFilter .vbtn { flex: none; }
+
+/* stato senza gara per la carica scelta */
+.detail .norace { margin: 10px 0 6px; }
+.detail .noraceList { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
+.detail .noraceList li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }

@@ -936,6 +936,32 @@
     else if (window.innerWidth <= 900) $('detail').scrollIntoView({ block: 'start' });
   }
 
+  // Stato senza gara per la carica scelta (es. New York al Senato nel 2026): lo dice chiaramente
+  // e riassume le gare che invece ci sono, con il pulsante per andarci.
+  function noRaceHTML(st) {
+    const nm = esc(STATE_NAMES[st] || st);
+    const msg = ARCHIVE ? `In questa elezione ${nm} non votava per questa carica.`
+      : state.office === 'S' ? `Quest'anno ${nm} non vota per il Senato: i suoi due seggi non sono in palio e tornano al voto in un'altra tornata.`
+      : state.office === 'G' ? `Quest'anno ${nm} non elegge il governatore.`
+      : `Nessuna gara per la Camera in ${nm}.`;
+    const rows = OFFICES.filter((o) => o !== state.office).map((o) => {
+      const xs = (state.data[o] || []).filter((r) => r.state === st);
+      if (!xs.length) return '';
+      let sum;
+      if (xs.length === 1) {
+        const r = xs[0], w = r.winner || r.leader;
+        sum = !w ? 'nessun voto ancora'
+          : `<b class="p ${partyClass(w.party)}">${esc(w.name)}</b> ${r.winner ? 'vince' : `in testa${r.margin !== null && r.margin !== undefined ? ` (${fmtMargin(r.margin)})` : ''}`} · ${pctS(r.eevp)}% scrutinato`;
+      } else {
+        const n = (p) => xs.filter((r) => r.winner && (p === 'OTH' ? r.winner.party !== 'DEM' && r.winner.party !== 'GOP' : r.winner.party === p)).length;
+        const d = n('DEM'), g = n('GOP'), x = n('OTH'), open = xs.length - d - g - x;
+        sum = `${xs.length} distretti: <b class="p dem">${d} Dem.</b> · <b class="p gop">${g} Rep.</b>${x ? ` · ${x} altri` : ''}${open ? ` · ${open} ancora aperti` : ''}`;
+      }
+      return `<li><button type="button" class="mini" data-go="${o}">${OFFICE_NAME[o]}</button> <span>${sum}</span></li>`;
+    }).join('');
+    return `<p class="norace">${msg}</p>${rows ? `<ul class="noraceList">${rows}</ul>` : ''}`;
+  }
+
   function showsPanel(r) {
     if (r.office !== 'H') return true;
     return state.openRace === r.id || (state.data.H || []).filter((x) => x.state === r.state).length === 1;
@@ -957,9 +983,9 @@
     box.innerHTML = `<div class="dhead"><h3>${esc(STATE_NAMES[st] || st)} <span class="muted small">· ${OFFICE_NAME[state.office]}</span></h3>
         <span class="dbtns"><button type="button" class="mini" data-share="1" title="Copia il link a questa vista">Condividi</button><button type="button" class="mini" data-close="1" aria-label="Chiudi">✕</button></span></div>
       <p class="muted small" style="margin:0">${closedTxt}</p>
-      <div class="links">${other ? '<span class="muted small">Vedi anche:</span> ' + other : ''}</div>
+      <div class="links">${other && rs.length ? '<span class="muted small">Vedi anche:</span> ' + other : ''}</div>
       ${state.office === 'H' && rs.length > 1 && DIST() && DIST()[st] ? districtMapSVG(st, rs) : ''}
-      ${rs.length ? rs.map((r) => raceHTML(r, true)).join('') : '<p class="muted">Nessuna gara per questo ufficio.</p>'}
+      ${rs.length ? rs.map((r) => raceHTML(r, true)).join('') : noRaceHTML(st)}
       <div class="xpanel" data-xp="${st}"${xp ? ' data-filled="1"' : ''}><h4 class="xh">Nello stesso stato</h4>${xp || '<p class="muted small">Caricamento di referendum e altre cariche statali…</p>'}</div>`;
     box.scrollTop = keep;
     refreshCountyPanels(false);
