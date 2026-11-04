@@ -378,3 +378,7 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 .dchip { min-width: 36px; padding: 4px 6px; font-size: .8rem; font-weight: 700; border-radius: 6px; border-left: 7px solid var(--c); font-variant-numeric: tabular-nums; }
 .dchip.sel { outline: 2px solid var(--fg); outline-offset: 1px; }
 @media (max-width: 900px) { .dchip { min-width: 42px; padding: 7px 6px; } }
+
+/* piccoli stati del Nord-Est: colonna con linee guida a mappa intera, sigla sullo stato quando è ingrandita */
+#map.zoomed .side { display: none; }
+#map:not(.zoomed) .inplace { display: none; }

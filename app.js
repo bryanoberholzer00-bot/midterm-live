@@ -782,17 +782,19 @@
       let lx = g.c[0], ly = g.c[1], anchorLeft = false;
       if (side >= 0) {
         lx = sideX; ly = sideY0 + side * sideStep; anchorLeft = true;
-        labels.push(`<path class="lead-line" d="M${g.c[0]},${g.c[1]} L${lx - 4},${ly}"/>`);
+        labels.push(`<path class="lead-line side" d="M${g.c[0]},${g.c[1]} L${lx - 4},${ly}"/>`);
       }
       const dim = rs.length ? '' : ' dim';
+      const sideCls = anchorLeft ? ' side' : '';
+      const inplace = (cls) => (anchorLeft ? `<text class="${cls} inplace${dim}" x="${g.c[0]}" y="${g.c[1] + 4}" data-st="${st}">${st}</text>` : '');
       if (dist) {
-        labels.push(`<text class="lbl small${dim}" x="${anchorLeft ? lx + 10 : lx}" y="${ly + 4}" data-st="${st}">${st}</text>`);
+        labels.push(`<text class="lbl small${dim}${sideCls}" x="${anchorLeft ? lx + 10 : lx}" y="${ly + 4}" data-st="${st}">${st}</text>${inplace('lbl small')}`);
       } else if (house && rs.length) {
         const cell = rs.length > 30 ? 6 : rs.length > 12 ? 7 : 8;
         const grid = districtGrid(rs, anchorLeft ? lx + 22 : lx, ly, cell, anchorLeft);
         labels.push(`<g data-st="${st}" class="st">${grid.html}<text class="lbl" x="${anchorLeft ? lx + 8 : lx}" y="${anchorLeft ? ly + 4 : (grid.oy - 3).toFixed(1)}">${st}</text></g>`);
       } else {
-        labels.push(`<text class="lbl${dim}" x="${anchorLeft ? lx + 10 : lx}" y="${ly + 4}" data-st="${st}">${st}</text>`);
+        labels.push(`<text class="lbl${dim}${sideCls}" x="${anchorLeft ? lx + 10 : lx}" y="${ly + 4}" data-st="${st}">${st}</text>${inplace('lbl')}`);
       }
     }
     if (dist) overlay.push(`<g class="dselg">${dselPath()}</g><path class="hovp"/>`);
