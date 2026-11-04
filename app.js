@@ -412,7 +412,7 @@
       if (snap.won || !competitive(r)) continue;
       if (!p.total && r.total) { ev('first', { m: r.margin }); continue; }
       if (p.lid && snap.lid && p.lid !== snap.lid && r.leader) { ev('flip', { name: r.leader.name, party: r.leader.party, m: r.margin }); continue; }
-      if (snap.eevp - p.eevp >= 15) ev('jump', { eevp: snap.eevp, m: r.margin });
+      if (snap.eevp - p.eevp >= 15) ev('jump', { eevp: snap.eevp, from: p.eevp, m: r.margin, name: r.leader ? r.leader.name : null, party: r.leader ? r.leader.party : null });
     }
     state.prevSnap = now;
     if (!evs.length) return;
@@ -436,7 +436,15 @@
       if (e.type === 'call') txt = `${who} vince${e.flip ? ' e strappa il seggio' : ''}`;
       else if (e.type === 'flip') txt = `${who} passa in testa${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
       else if (e.type === 'first') txt = ` arrivano i primi voti${e.m !== null && e.m !== undefined ? ` (${fmtMargin(e.m)})` : ''}`;
-      else txt = ` scrutinato il ${pctS(e.eevp)}%${e.m !== null && e.m !== undefined ? `, ${fmtMargin(e.m)}` : ''}`;
+      else {
+        // grande blocco di schede: da quanto a quanto, e chi è in testa di quanti punti
+        const span = e.from !== undefined && e.from !== null ? `dal ${pctS(e.from)}% al ${pctS(e.eevp)}%` : `il ${pctS(e.eevp)}%`;
+        const hasM = e.m !== null && e.m !== undefined;
+        const pts = hasM ? `${Math.abs(e.m).toFixed(1).replace('.', ',')} punti` : '';
+        const lead = e.name ? `in testa${who} (${partyShort(e.party)})${hasM ? ` di ${pts}` : ''}`
+          : hasM ? `<b class="${marginClass(e.m)}">${fmtMargin(e.m)}</b>` : '';
+        txt = ` scrutinato ${span}${lead ? ` · ${lead}` : ''}`;
+      }
       return `<li class="ev ${e.type}" data-id="${esc(e.id)}"><span class="t">${fmtWhen(new Date(e.t))}</span><span class="badge ev-${e.type}">${EV_IT[e.type]}</span><span>${esc(raceLabel(r))}:${txt}</span></li>`;
     }).join('');
   }
@@ -503,6 +511,7 @@
     return p.none;
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function partyShort(p) { return p === 'DEM' ? 'Dem.' : p === 'GOP' ? 'Rep.' : 'altro'; }
   function fmtMargin(m) { return m >= 0 ? `Dem. +${m.toFixed(1)}` : `Rep. +${(-m).toFixed(1)}`; }
   function marginClass(m) { return m === null || m === undefined ? '' : m >= 0 ? 'p dem' : 'p gop'; }
 

@@ -270,7 +270,7 @@ input[type="search"] { width: 270px; }
 .scsum p { margin: 6px 0; }
 .scbtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .scbtns button { font-size: .82rem; padding: 4px 10px; }
-.sclist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px 12px; }
+.sclist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 6px 12px; }
 .sclist li { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: center; padding: 6px 10px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); font-size: .88rem; }
 .sclist li.mod { border-color: var(--warn); }
 .sclist .nm { font-weight: 600; }
@@ -368,7 +368,8 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 .events .badge { text-align: center; }
 .badge.ev-call { background: var(--ok); border-color: var(--ok); color: #06241a; font-weight: 700; }
 .badge.ev-flip { background: var(--warn); border-color: var(--warn); color: #2a1d05; font-weight: 700; }
-.badge.ev-first { color: var(--fg); }
+.badge.ev-first, .badge.ev-jump { color: var(--fg); border-color: var(--muted); font-weight: 600; }
+.badge.ev-jump { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 @media (max-width: 900px) { .events li { grid-template-columns: auto 1fr; } .events li > span:last-child { grid-column: 1 / -1; } #evBlock .blockhead { flex-wrap: wrap; } }
 
 /* selezione dei distretti */
@@ -382,3 +383,7 @@ b.yes { color: var(--yes); } b.no { color: var(--no); }
 /* piccoli stati del Nord-Est: colonna con linee guida a mappa intera, sigla sullo stato quando è ingrandita */
 #map.zoomed .side { display: none; }
 #map:not(.zoomed) .inplace { display: none; }
+
+/* schermi stretti: il filtro della cronaca scorre da solo invece di allargare la pagina */
+#evFilter { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+#evFilter .vbtn { flex: none; }
