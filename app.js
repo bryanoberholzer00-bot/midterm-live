@@ -650,7 +650,7 @@
     const dist = DIST(); if (!dist || !state.openRace) return '';
     const r = state.byId.get(state.openRace);
     const dd = r && dist[r.state] && dist[r.state][String(r.seatNum)];
-    return dd ? `<path class="dsel" d="${dd.d}"/>` : '';
+    return dd ? `<path class="dsel" d="${dd.d}" clip-path="url(#sc-${r.state})"/>` : '';
   }
 
   // Frecce dello spostamento rispetto alle presidenziali 2024: verso sinistra = Dem, verso destra = Rep
@@ -759,7 +759,7 @@
   function geoMapHTML(byState, shift) {
     const house = state.office === 'H';
     const dist = house ? DIST() : null;
-    const shapes = [], overlay = [], labels = [];
+    const shapes = [], overlay = [], labels = [], clips = [];
     const sideX = 905, sideY0 = 38, sideStep = house && !dist ? 30 : 22;
     for (const [st, g] of Object.entries(GEO)) {
       const rs = byState[st] || [];
@@ -771,7 +771,8 @@
           const dd = dist[st][String(r.seatNum)];
           return dd ? `<path class="dist${state.newCalls.has(r.id) ? ' flash' : ''}" d="${dd.d}" fill="${colorFor(r)}" data-race-tip="${r.id}"/>` : '';
         }).join('');
-        shapes.push(`<g class="st hd" data-st="${st}"><path d="${g.d}" fill="${state.pal.none}"/>${ds}</g>`);
+        clips.push(`<clipPath id="sc-${st}"><path d="${g.d}"/></clipPath>`);
+        shapes.push(`<g class="st hd" data-st="${st}"><path d="${g.d}" fill="${state.pal.none}"/><g clip-path="url(#sc-${st})">${ds}</g></g>`);
         overlay.push(`<path class="sborder${sel}" d="${g.d}" data-sb="${st}"/>`);
       } else {
         const fill = house ? (rs.length ? state.pal.none : state.pal.off) : colorFor(rs[0] || null);
@@ -797,9 +798,9 @@
     if (dist) overlay.push(`<g class="dselg">${dselPath()}</g><path class="hovp"/>`);
     if (shift) {
       const mk = (c) => `<marker id="ah-${c}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--${c})"/></marker>`;
-      return `<defs>${mk('dem')}${mk('gop')}</defs>` + shapes.join('') + overlay.join('') + labels.join('') + '<g class="arrows"></g>';
+      return `<defs>${mk('dem')}${mk('gop')}${clips.join('')}</defs>` + shapes.join('') + overlay.join('') + labels.join('') + '<g class="arrows"></g>';
     }
-    return shapes.join('') + overlay.join('') + labels.join('');
+    return (clips.length ? `<defs>${clips.join('')}</defs>` : '') + shapes.join('') + overlay.join('') + labels.join('');
   }
 
   function tileMapHTML(byState) {
@@ -905,7 +906,12 @@
     if (old) old.removeAttribute('d');
     hovEl = p;
     const h = p && p.ownerSVGElement && p.ownerSVGElement.querySelector('.hovp');
-    if (h) h.setAttribute('d', p.getAttribute('d'));
+    if (h) {
+      const svgEl = p.ownerSVGElement, g = p.closest('[data-st]');
+      const cl = svgEl.classList.contains('dmap') ? svgEl.dataset.clip : g ? 'sc-' + g.dataset.st : '';
+      if (cl) h.setAttribute('clip-path', `url(#${cl})`); else h.removeAttribute('clip-path');
+      h.setAttribute('d', p.getAttribute('d'));
+    }
   });
 
   /* --- pannello di dettaglio --- */
@@ -1105,7 +1111,9 @@
       if (Math.min(dd.b[2] - dd.b[0], dd.b[3] - dd.b[1]) > fs * 1.5) labels.push(`<text x="${dd.c[0]}" y="${(dd.c[1] + fs * 0.35).toFixed(1)}" style="font-size:${fs.toFixed(2)}px">${r.seatNum}</text>`);
     }
     const selR = rs.find((r) => r.id === state.openRace), sd = selR && dist[String(selR.seatNum)];
-    return `<svg class="dmap" viewBox="${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}" role="img" aria-label="Distretti dello stato">${paths.join('')}${sd ? `<path class="dsel" d="${sd.d}"/>` : ''}<path class="hovp"/><g class="dlbl">${labels.join('')}</g></svg>
+    const sp = GEO[st] ? GEO[st].d : '';
+    const clipAttr = sp ? ` clip-path="url(#dc-${st})"` : '';
+    return `<svg class="dmap" viewBox="${(x0 - pad).toFixed(1)} ${(y0 - pad).toFixed(1)} ${(w + 2 * pad).toFixed(1)} ${(h + 2 * pad).toFixed(1)}" role="img" aria-label="Distretti dello stato"${sp ? ` data-clip="dc-${st}"` : ''}>${sp ? `<defs><clipPath id="dc-${st}"><path d="${sp}"/></clipPath></defs>` : ''}<g${clipAttr}>${paths.join('')}</g>${sd ? `<path class="dsel" d="${sd.d}"${clipAttr}/>` : ''}<path class="hovp"/><g class="dlbl">${labels.join('')}</g></svg>
       <div class="dchips" role="group" aria-label="Distretti">${rs.map((r) => `<button type="button" class="dchip${state.openRace === r.id ? ' sel' : ''}" data-dist="${r.id}" data-race-tip="${r.id}" style="--c:${colorFor(r)}" aria-label="Distretto ${r.seatNum}">${r.seatNum}</button>`).join('')}</div>
       <p class="muted small" style="margin:4px 0 6px">Confini 2026 dei distretti (Census). Clicca un distretto sulla mappa o il suo numero per i dettagli e la mappa per contea.</p>`;
   }
@@ -1339,7 +1347,7 @@
     const by = new Map(feed.units.filter((u) => u.fips).map((u) => [u.fips, u]));
     let bb = geo.bbox, outline = '';
     const dd = r.office === 'H' && DIST() && DIST()[r.state] && DIST()[r.state][String(r.seatNum)];
-    if (dd) { bb = dd.b; outline = `<path class="dline" d="${dd.d}"/>`; }
+    if (dd) { bb = dd.b; outline = GEO[r.state] ? `<clipPath id="cs-${r.id.replace(/[^A-Za-z0-9_-]/g, '')}"><path d="${GEO[r.state].d}"/></clipPath><path class="dline" d="${dd.d}" clip-path="url(#cs-${r.id.replace(/[^A-Za-z0-9_-]/g, '')})"/>` : `<path class="dline" d="${dd.d}"/>`; }
     else if (r.office === 'H') {
       let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
       for (const f of by.keys()) {
